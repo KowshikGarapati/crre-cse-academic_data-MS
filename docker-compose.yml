@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: crre-academic-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: crre_academic_dms
+      POSTGRES_USER: crre_user
+      POSTGRES_PASSWORD: crre_password123
+    ports:
+      - "5433:5432"
+    volumes:
+      - crre_academic_pgdata:/var/lib/postgresql/data
+
+volumes:
+  crre_academic_pgdata:
+    driver: local
