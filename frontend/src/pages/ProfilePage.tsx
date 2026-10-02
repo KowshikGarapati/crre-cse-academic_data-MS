@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   LogOut,
   CheckCircle,
+  Briefcase,
 } from 'lucide-react';
 
 export const ProfilePage: React.FC = () => {
@@ -37,6 +38,8 @@ export const ProfilePage: React.FC = () => {
     return `${s.slice(0, 4)} ${s.slice(4, 8)} ${s.slice(8, 12)}`;
   };
 
+  const activeResps = user.responsibilities?.filter((r) => r.status === 'ACTIVE') || [];
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
@@ -53,7 +56,7 @@ export const ProfilePage: React.FC = () => {
 
           <button
             onClick={handleLogout}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 border border-red-200 transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 border border-red-200 transition-colors cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             Logout
@@ -61,11 +64,11 @@ export const ProfilePage: React.FC = () => {
         </div>
 
         {/* Profile Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
           {/* Header Banner */}
-          <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 sm:p-8 text-white">
+          <div className="bg-gradient-to-r from-indigo-700 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white text-2xl font-bold border border-white/30">
+              <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-xs flex items-center justify-center text-white text-2xl font-bold border border-white/30">
                 {user.fullName.charAt(0)}
               </div>
               <div>
@@ -76,7 +79,7 @@ export const ProfilePage: React.FC = () => {
                   </span>
                   <span className="text-xs text-indigo-100 flex items-center gap-1">
                     <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
-                    Account Active
+                    Account Active ({user.enabled ? 'Enabled' : 'Disabled'})
                   </span>
                 </div>
               </div>
@@ -86,7 +89,7 @@ export const ProfilePage: React.FC = () => {
           {/* Details Section */}
           <div className="p-6 sm:p-8 space-y-6">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
                 Account Information
               </h2>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -111,7 +114,7 @@ export const ProfilePage: React.FC = () => {
                 <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-100">
                   <dt className="text-xs text-slate-500 font-medium flex items-center gap-2">
                     <Shield className="w-3.5 h-3.5 text-slate-400" />
-                    Role
+                    Primary Role
                   </dt>
                   <dd className="mt-1 text-sm font-semibold text-slate-900">{user.role}</dd>
                 </div>
@@ -119,7 +122,7 @@ export const ProfilePage: React.FC = () => {
                 <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-100">
                   <dt className="text-xs text-slate-500 font-medium flex items-center gap-2">
                     <Hash className="w-3.5 h-3.5 text-slate-400" />
-                    User UUID
+                    System UUID
                   </dt>
                   <dd className="mt-1 text-xs font-mono font-semibold text-slate-700 truncate">
                     {user.id}
@@ -128,8 +131,51 @@ export const ProfilePage: React.FC = () => {
               </dl>
             </div>
 
+            {/* Active Responsibilities in Profile */}
             <div className="border-t border-slate-200 pt-6">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-indigo-600" />
+                Active Institutional Responsibilities ({activeResps.length})
+              </h2>
+
+              {activeResps.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {activeResps.map((r) => (
+                    <div
+                      key={r.id}
+                      className="p-3.5 rounded-lg bg-indigo-50/50 border border-indigo-100 text-xs"
+                    >
+                      <div className="flex items-center justify-between font-bold text-slate-900 mb-1">
+                        <span>{r.type.replace('_', ' ')}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">
+                          ACTIVE
+                        </span>
+                      </div>
+                      {r.subjectName && (
+                        <div className="text-slate-600">
+                          Subject: <strong className="text-slate-800">{r.subjectName}</strong> ({r.subjectCode})
+                        </div>
+                      )}
+                      {r.sectionName && (
+                        <div className="text-slate-600">
+                          Section: <strong className="text-slate-800">{r.sectionName}</strong>
+                        </div>
+                      )}
+                      {r.departmentName && (
+                        <div className="text-slate-600">
+                          Department: <strong className="text-slate-800">{r.departmentName}</strong>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No special departmental responsibilities assigned.</p>
+              )}
+            </div>
+
+            <div className="border-t border-slate-200 pt-6">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
                 Institutional & Government Identifiers
               </h2>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">

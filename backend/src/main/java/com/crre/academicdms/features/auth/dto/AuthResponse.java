@@ -1,12 +1,10 @@
 package com.crre.academicdms.features.auth.dto;
 
 public record AuthResponse(
-    String accessToken,
-    String tokenType,
-    long expiresIn,
+    String message,
     UserSummaryDto user
 ) {
-    public static AuthResponse of(String token, long expiresIn, UserSummaryDto user) {
-        return new AuthResponse(token, "Bearer", expiresIn, user);
+    public static AuthResponse of(UserSummaryDto user) {
+        return new AuthResponse("Login successful", user);
     }
 }

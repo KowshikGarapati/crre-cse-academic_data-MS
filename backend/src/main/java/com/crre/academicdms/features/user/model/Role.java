@@ -1,9 +1,11 @@
 package com.crre.academicdms.features.user.model;
 
 public enum Role {
-    STUDENT,
+    PRINCIPAL,
+    HOD,
     FACULTY,
     COUNSELLOR,
-    HOD,
+    CLASS_TEACHER,
+    STUDENT,
     ADMIN
 }

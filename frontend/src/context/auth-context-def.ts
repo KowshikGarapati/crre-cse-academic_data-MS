@@ -3,7 +3,6 @@ import type { UserSummary } from '../types/auth.types';
 
 export interface AuthContextType {
   user: UserSummary | null;
-  token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (identifier: string, password: string) => Promise<void>;
