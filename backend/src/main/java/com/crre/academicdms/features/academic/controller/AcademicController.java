@@ -31,8 +31,11 @@ public class AcademicController {
     }
 
     @GetMapping("/sections/{sectionId}/students")
-    public ResponseEntity<ApiResponse<List<StudentDto>>> getSectionStudents(@PathVariable UUID sectionId) {
-        List<StudentDto> students = academicService.getStudentsForSection(sectionId);
+    public ResponseEntity<ApiResponse<List<StudentDto>>> getSectionStudents(
+        @PathVariable UUID sectionId,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<StudentDto> students = academicService.getStudentsForSection(sectionId, caller);
         return ResponseEntity.ok(ApiResponse.success("Section students retrieved successfully", students));
     }
 

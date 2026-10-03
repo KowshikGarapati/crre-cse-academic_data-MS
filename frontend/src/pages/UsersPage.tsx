@@ -36,8 +36,49 @@ export const UsersPage: React.FC = () => {
 
   // Add User Modal State
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [activeAddTab, setActiveAddTab] = useState<'STUDENT' | 'FACULTY' | 'OTHER'>('STUDENT');
+
+  // Student specific form with Educational History
+  const [studentForm, setStudentForm] = useState({
+    fullName: '',
+    username: '',
+    email: '',
+    password: 'Student@123',
+    registrationNumber: '',
+    uniqueId: '',
+    entryType: 'REGULAR',
+    educationalHistory: [
+      {
+        qualificationType: 'SSC',
+        boardOrUniversity: 'BSEAP',
+        institutionName: 'Govt High School',
+        hallTicketNumber: '',
+        completionYear: 2022,
+        percentage: 85,
+      },
+    ],
+  });
+
+  // Faculty specific form with Professional details (NO PROGRAM FIELD)
+  const [facultyForm, setFacultyForm] = useState({
+    fullName: '',
+    username: '',
+    email: '',
+    password: 'Faculty@123',
+    employeeNumber: '',
+    designation: 'Assistant Professor',
+    qualification: 'M.Tech (CSE)',
+    specialization: 'Artificial Intelligence & Machine Learning',
+    professionalExperience: '5+ Years',
+    institutionalContact: 'ext: 4201',
+    subjectId: '',
+    sectionId: '',
+    classTeacher: false,
+    counsellor: false,
+  });
+
   const [addForm, setAddForm] = useState<Partial<CreateUserRequest>>({
-    role: 'FACULTY',
+    role: 'HOD',
     classTeacher: false,
   });
   const [addError, setAddError] = useState<string | null>(null);
@@ -77,6 +118,12 @@ export const UsersPage: React.FC = () => {
         if (mounted) {
           setUsers(usersList);
           setMetadata(meta);
+          if (meta.subjects.length > 0) {
+            setFacultyForm((prev) => ({ ...prev, subjectId: meta.subjects[0].id }));
+          }
+          if (meta.sections.length > 0) {
+            setFacultyForm((prev) => ({ ...prev, sectionId: meta.sections[0].id }));
+          }
         }
       } catch (err) {
         console.error('Failed to load user management data', err);
@@ -120,7 +167,128 @@ export const UsersPage: React.FC = () => {
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentForm.fullName || !studentForm.username || !studentForm.email || !studentForm.registrationNumber) {
+      setAddError('Please fill in all required student details');
+      return;
+    }
+    const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
+    const aimlProg = metadata?.programs.find((p) => p.code === 'AIML') || metadata?.programs[0];
+    const sec1 = metadata?.sections.find((s) => s.sectionName.includes('1')) || metadata?.sections[0];
+
+    setAddError(null);
+    setIsSubmittingUser(true);
+    try {
+      const created = await userApi.createStudentUser({
+        fullName: studentForm.fullName,
+        username: studentForm.username,
+        email: studentForm.email,
+        password: studentForm.password,
+        registrationNumber: studentForm.registrationNumber,
+        uniqueId: studentForm.uniqueId || ('CRRE' + studentForm.registrationNumber),
+        entryType: studentForm.entryType,
+        departmentId: cseDept!.id,
+        programId: aimlProg!.id,
+        academicYearId: '40000000-0000-0000-0000-000000000001',
+        semesterId: '50000000-0000-0000-0000-000000000001',
+        sectionId: sec1!.id,
+        educationalHistory: studentForm.educationalHistory.map((h) => ({
+          qualificationType: h.qualificationType,
+          boardOrUniversity: h.boardOrUniversity,
+          institutionName: h.institutionName,
+          hallTicketNumber: h.hallTicketNumber || undefined,
+          completionYear: Number(h.completionYear),
+          percentage: Number(h.percentage),
+        })),
+      });
+      setUsers((prev) => [created, ...prev]);
+      setShowAddUserModal(false);
+      setStudentForm({
+        fullName: '',
+        username: '',
+        email: '',
+        password: 'Student@123',
+        registrationNumber: '',
+        uniqueId: '',
+        entryType: 'REGULAR',
+        educationalHistory: [
+          {
+            qualificationType: 'SSC',
+            boardOrUniversity: 'BSEAP',
+            institutionName: 'Govt High School',
+            hallTicketNumber: '',
+            completionYear: 2022,
+            percentage: 85,
+          },
+        ],
+      });
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : 'Failed to create student');
+    } finally {
+      setIsSubmittingUser(false);
+    }
+  };
+
+  const handleCreateFaculty = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!facultyForm.fullName || !facultyForm.username || !facultyForm.email || !facultyForm.employeeNumber) {
+      setAddError('Please fill in all required faculty details');
+      return;
+    }
+    const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
+    const sec1 = metadata?.sections.find((s) => s.sectionName.includes('1')) || metadata?.sections[0];
+    const sub1 = metadata?.subjects[0];
+
+    const teachingAssignments = facultyForm.subjectId && facultyForm.sectionId
+      ? [{ subjectId: facultyForm.subjectId, sectionId: facultyForm.sectionId }]
+      : sub1 && sec1 ? [{ subjectId: sub1.id, sectionId: sec1.id }] : [];
+
+    setAddError(null);
+    setIsSubmittingUser(true);
+    try {
+      const created = await userApi.createFacultyUser({
+        fullName: facultyForm.fullName,
+        username: facultyForm.username,
+        email: facultyForm.email,
+        password: facultyForm.password,
+        employeeNumber: facultyForm.employeeNumber,
+        departmentId: cseDept!.id,
+        designation: facultyForm.designation,
+        qualification: facultyForm.qualification,
+        specialization: facultyForm.specialization,
+        professionalExperience: facultyForm.professionalExperience,
+        institutionalContact: facultyForm.institutionalContact,
+        teachingAssignments,
+        classTeacherSectionId: facultyForm.classTeacher ? (facultyForm.sectionId || sec1?.id) : undefined,
+        counsellor: facultyForm.counsellor,
+      });
+      setUsers((prev) => [created, ...prev]);
+      setShowAddUserModal(false);
+      setFacultyForm({
+        fullName: '',
+        username: '',
+        email: '',
+        password: 'Faculty@123',
+        employeeNumber: '',
+        designation: 'Assistant Professor',
+        qualification: 'M.Tech (CSE)',
+        specialization: 'Artificial Intelligence & Machine Learning',
+        professionalExperience: '5+ Years',
+        institutionalContact: 'ext: 4201',
+        subjectId: sub1?.id || '',
+        sectionId: sec1?.id || '',
+        classTeacher: false,
+        counsellor: false,
+      });
+    } catch (err: unknown) {
+      setAddError(err instanceof Error ? err.message : 'Failed to create faculty');
+    } finally {
+      setIsSubmittingUser(false);
+    }
+  };
+
+  const handleCreateOtherUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addForm.fullName || !addForm.username || !addForm.email || !addForm.password || !addForm.role) {
       setAddError('Please fill in all required fields');
@@ -133,7 +301,7 @@ export const UsersPage: React.FC = () => {
       const created = await userApi.createUser(addForm as CreateUserRequest);
       setUsers((prev) => [created, ...prev]);
       setShowAddUserModal(false);
-      setAddForm({ role: 'FACULTY', classTeacher: false });
+      setAddForm({ role: 'HOD', classTeacher: false });
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Failed to create user');
     } finally {
@@ -424,11 +592,11 @@ export const UsersPage: React.FC = () => {
       {/* Add User Modal */}
       {showAddUserModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-base font-bold text-slate-900">Add New User</h3>
+                <h3 className="text-base font-bold text-slate-900">Add Academic DMS User</h3>
               </div>
               <button
                 onClick={() => setShowAddUserModal(false)}
@@ -438,6 +606,45 @@ export const UsersPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Mode Tabs */}
+            <div className="flex border-b border-slate-200 mb-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => { setActiveAddTab('STUDENT'); setAddError(null); }}
+                className={`pb-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+                  activeAddTab === 'STUDENT'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Add Student (With Prior Education)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setActiveAddTab('FACULTY'); setAddError(null); }}
+                className={`pb-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+                  activeAddTab === 'FACULTY'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Add Faculty (Professional & Assignments)
+              </button>
+              {(currentUser?.role === 'ADMIN' || currentUser?.role === 'PRINCIPAL') && (
+                <button
+                  type="button"
+                  onClick={() => { setActiveAddTab('OTHER'); setAddError(null); }}
+                  className={`pb-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+                    activeAddTab === 'OTHER'
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Other Roles
+                </button>
+              )}
+            </div>
+
             {addError && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs flex items-start gap-2">
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -445,107 +652,423 @@ export const UsersPage: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Dr. Rajesh Kumar"
-                    value={addForm.fullName || ''}
-                    onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Username *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. rajesh.cse"
-                    value={addForm.username || ''}
-                    onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Email *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="user@crre.edu"
-                    value={addForm.email || ''}
-                    onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Password *</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={addForm.password || ''}
-                    onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Role *</label>
-                <select
-                  value={addForm.role}
-                  onChange={(e) => setAddForm({ ...addForm, role: e.target.value as Role })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800"
-                >
-                  {allowedRolesToCreate.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                {currentUser?.role === 'HOD' && (
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    Downward Authority: HOD can create Faculty, Counsellor, and Student accounts.
-                  </p>
-                )}
-              </div>
-
-              {/* Dynamic Role Fields */}
-              {(addForm.role === 'FACULTY' || addForm.role === 'CLASS_TEACHER') && (
-                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                  <div className="font-bold text-slate-800 text-[11px]">
-                    Initial Faculty Academic Assignment
+            {/* 1. STUDENT ONBOARDING FLOW */}
+            {activeAddTab === 'STUDENT' && (
+              <form onSubmit={handleCreateStudent} className="space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Student Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Naga Kowshik"
+                      value={studentForm.fullName}
+                      onChange={(e) => setStudentForm({ ...studentForm, fullName: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Username *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 25b81a4267"
+                      value={studentForm.username}
+                      onChange={(e) => setStudentForm({ ...studentForm, username: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="student@crre.edu"
+                      value={studentForm.email}
+                      onChange={(e) => setStudentForm({ ...studentForm, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={studentForm.password}
+                      onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Roll / Reg Number *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. 25B81A4267"
+                      value={studentForm.registrationNumber}
+                      onChange={(e) => setStudentForm({ ...studentForm, registrationNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Unique ID</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CRRE25B81A4267"
+                      value={studentForm.uniqueId}
+                      onChange={(e) => setStudentForm({ ...studentForm, uniqueId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Admission Type *</label>
+                    <select
+                      value={studentForm.entryType}
+                      onChange={(e) => setStudentForm({ ...studentForm, entryType: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="REGULAR">REGULAR (SSC + Inter)</option>
+                      <option value="LATERAL">LATERAL (Diploma)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Educational History Builder */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="font-bold text-slate-800 text-xs">
+                      Prior Educational Qualifications (History)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setStudentForm({
+                          ...studentForm,
+                          educationalHistory: [
+                            ...studentForm.educationalHistory,
+                            {
+                              qualificationType: studentForm.entryType === 'LATERAL' ? 'DIPLOMA' : 'INTERMEDIATE',
+                              boardOrUniversity: studentForm.entryType === 'LATERAL' ? 'SBTET' : 'BIEAP',
+                              institutionName: '',
+                              hallTicketNumber: '',
+                              completionYear: 2024,
+                              percentage: 80,
+                            },
+                          ],
+                        })
+                      }
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Qualification
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {studentForm.educationalHistory.map((edu, idx) => (
+                      <div key={idx} className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-bold text-[11px] text-indigo-800">
+                            Qualification #{idx + 1}
+                          </span>
+                          {studentForm.educationalHistory.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setStudentForm({
+                                  ...studentForm,
+                                  educationalHistory: studentForm.educationalHistory.filter((_, i) => i !== idx),
+                                })
+                              }
+                              className="text-red-500 hover:text-red-700 text-xs font-semibold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">Type</label>
+                            <select
+                              value={edu.qualificationType}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].qualificationType = e.target.value;
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                            >
+                              <option value="SSC">SSC (10th)</option>
+                              <option value="INTERMEDIATE">Intermediate (12th)</option>
+                              <option value="DIPLOMA">Diploma (Polytechnic)</option>
+                              <option value="OTHER">Other</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">Board / University</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. BSEAP"
+                              value={edu.boardOrUniversity}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].boardOrUniversity = e.target.value;
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">School / College</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Institution name"
+                              value={edu.institutionName}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].institutionName = e.target.value;
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">Hall Ticket No.</label>
+                            <input
+                              type="text"
+                              placeholder="e.g. HT-12345"
+                              value={edu.hallTicketNumber}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].hallTicketNumber = e.target.value;
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">Passing Year</label>
+                            <input
+                              type="number"
+                              required
+                              value={edu.completionYear}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].completionYear = Number(e.target.value);
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] text-slate-600 mb-0.5">Percentage (%)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              required
+                              value={edu.percentage}
+                              onChange={(e) => {
+                                const updated = [...studentForm.educationalHistory];
+                                updated[idx].percentage = Number(e.target.value);
+                                setStudentForm({ ...studentForm, educationalHistory: updated });
+                              }}
+                              className="w-full p-1.5 border border-slate-300 rounded text-xs font-bold text-emerald-700"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserModal(false)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingUser}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Enrol Student
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* 2. FACULTY ONBOARDING FLOW (NO PROGRAM FIELD) */}
+            {activeAddTab === 'FACULTY' && (
+              <form onSubmit={handleCreateFaculty} className="space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Faculty Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Dr. P. Seshagiri Rao"
+                      value={facultyForm.fullName}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, fullName: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Username *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. seshagiri.cse"
+                      value={facultyForm.username}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, username: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="faculty@crre.edu"
+                      value={facultyForm.email}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={facultyForm.password}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, password: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Employee Number *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. E105"
+                      value={facultyForm.employeeNumber}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, employeeNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Designation *</label>
+                    <select
+                      value={facultyForm.designation}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, designation: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    >
+                      <option value="Assistant Professor">Assistant Professor</option>
+                      <option value="Associate Professor">Associate Professor</option>
+                      <option value="Professor">Professor</option>
+                      <option value="HOD">Head of Department</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Department</label>
+                    <div className="p-2 border border-slate-200 bg-slate-100 rounded-lg font-bold text-slate-800">
+                      CSE (Institutional)
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Highest Qualification</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. M.Tech, Ph.D"
+                      value={facultyForm.qualification}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, qualification: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Specialization</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Machine Learning, Cloud"
+                      value={facultyForm.specialization}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, specialization: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Experience</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 8 Years"
+                      value={facultyForm.professionalExperience}
+                      onChange={(e) => setFacultyForm({ ...facultyForm, professionalExperience: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    />
+                  </div>
+                </div>
+
+                {/* Initial Teaching Assignment */}
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="font-bold text-slate-800 text-xs">
+                    Initial Teaching Subject & Class Allocation
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block font-medium text-slate-600 mb-1">Course / Subject</label>
+                      <label className="block font-medium text-slate-600 mb-1">Allocated Course / Subject</label>
                       <select
-                        value={addForm.subjectId || ''}
-                        onChange={(e) => setAddForm({ ...addForm, subjectId: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+                        value={facultyForm.subjectId}
+                        onChange={(e) => setFacultyForm({ ...facultyForm, subjectId: e.target.value })}
+                        className="w-full p-2 border border-slate-300 rounded bg-white text-xs"
                       >
                         {metadata?.subjects.map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.code} - {s.name}
+                            {s.code} - {s.name} ({s.credits} Cr)
                           </option>
                         ))}
                       </select>
                     </div>
 
                     <div>
-                      <label className="block font-medium text-slate-600 mb-1">Section</label>
+                      <label className="block font-medium text-slate-600 mb-1">Target Section</label>
                       <select
-                        value={addForm.sectionId || ''}
-                        onChange={(e) => setAddForm({ ...addForm, sectionId: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white"
+                        value={facultyForm.sectionId}
+                        onChange={(e) => setFacultyForm({ ...facultyForm, sectionId: e.target.value })}
+                        className="w-full p-2 border border-slate-300 rounded bg-white text-xs"
                       >
                         {metadata?.sections.map((sec) => (
                           <option key={sec.id} value={sec.id}>
@@ -556,70 +1079,142 @@ export const UsersPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="pt-2">
+                  <div className="pt-2 flex flex-col sm:flex-row gap-4">
                     <label className="inline-flex items-center gap-2 cursor-pointer">
                       <input
                         type="checkbox"
-                        checked={addForm.classTeacher || addForm.role === 'CLASS_TEACHER'}
-                        onChange={(e) => setAddForm({ ...addForm, classTeacher: e.target.checked })}
-                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                        checked={facultyForm.classTeacher}
+                        onChange={(e) => setFacultyForm({ ...facultyForm, classTeacher: e.target.checked })}
+                        className="rounded text-teal-600 focus:ring-teal-500"
                       />
                       <span className="font-semibold text-slate-700">
                         Designate as Class Teacher for this Section
                       </span>
                     </label>
+
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={facultyForm.counsellor}
+                        onChange={(e) => setFacultyForm({ ...facultyForm, counsellor: e.target.checked })}
+                        className="rounded text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="font-semibold text-slate-700">
+                        Assign Academic Counsellor Mentorship
+                      </span>
+                    </label>
                   </div>
                 </div>
-              )}
 
-              {addForm.role === 'STUDENT' && (
-                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-3">
-                  <div className="font-bold text-slate-800 text-[11px]">
-                    Student Enrollment Details
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserModal(false)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingUser}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Add Faculty Member
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* 3. OTHER ROLES FLOW */}
+            {activeAddTab === 'OTHER' && (
+              <form onSubmit={handleCreateOtherUser} className="space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Dr. Institutional Head"
+                      value={addForm.fullName || ''}
+                      onChange={(e) => setAddForm({ ...addForm, fullName: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-medium text-slate-600 mb-1">Roll / Reg Number (~10 chars)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. 25B81A4267"
-                        value={addForm.registrationNumber || ''}
-                        onChange={(e) => setAddForm({ ...addForm, registrationNumber: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white font-mono"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-medium text-slate-600 mb-1">Unique ID (~12 chars)</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. CRRE20244267"
-                        value={addForm.uniqueId || ''}
-                        onChange={(e) => setAddForm({ ...addForm, uniqueId: e.target.value })}
-                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded bg-white font-mono"
-                      />
-                    </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Username *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. hod.new"
+                      value={addForm.username || ''}
+                      onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
                   </div>
                 </div>
-              )}
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddUserModal(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingUser}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
-                >
-                  {isSubmittingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Create User Account
-                </button>
-              </div>
-            </form>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Email *</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="head@crre.edu"
+                      value={addForm.email || ''}
+                      onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Password *</label>
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={addForm.password || ''}
+                      onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Role *</label>
+                  <select
+                    value={addForm.role}
+                    onChange={(e) => setAddForm({ ...addForm, role: e.target.value as Role })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-800"
+                  >
+                    {allowedRolesToCreate.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddUserModal(false)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingUser}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {isSubmittingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Create Account
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

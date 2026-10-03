@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasItem;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -264,8 +266,236 @@ class AuthControllerIntegrationTest {
         UUID sectionId = UUID.fromString("60000000-0000-0000-0000-000000000001");
         mockMvc.perform(get("/api/v1/sections/" + sectionId + "/students").session(session))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.length()").value(66))
-            .andExpect(jsonPath("$.data[0].registrationNumber").value("25B81A4201"))
-            .andExpect(jsonPath("$.data[65].registrationNumber").value("25B81A4266"));
+            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(66)))
+            .andExpect(jsonPath("$.data[*].registrationNumber", hasItem("25B81A4201")))
+            .andExpect(jsonPath("$.data[*].registrationNumber", hasItem("25B81A4266")));
+    }
+
+    @Test
+    @DisplayName("TEST A - Normal Faculty Scope: Sees subjects & timetable, cannot access class teacher or counselling scope")
+    void testA_normalFacultyScope() throws Exception {
+        LoginRequest login = new LoginRequest("faculty.cse", "Faculty@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        // Can see my subjects
+        mockMvc.perform(get("/api/v1/faculty/my-subjects").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray());
+
+        // Can see my timetable (with room number)
+        mockMvc.perform(get("/api/v1/faculty/my-timetable").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray());
+
+        // Cannot access class teacher section students (throws 403)
+        mockMvc.perform(get("/api/v1/faculty/my-section/students").session(session))
+            .andExpect(status().isForbidden());
+
+        // No assigned counselling students
+        mockMvc.perform(get("/api/v1/faculty/my-counselling/students").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("TEST B - Faculty + Class Teacher: Sees section students and section academic overview")
+    void testB_classTeacherScope() throws Exception {
+        LoginRequest login = new LoginRequest("ramalakshmi", "Faculty@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        // Class teacher section overview
+        mockMvc.perform(get("/api/v1/faculty/my-section/overview").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.sectionName").value("Section 1"))
+            .andExpect(jsonPath("$.data.classTeacherName").value("CH. Rama Lakshmi"));
+
+        // Class teacher section students
+        mockMvc.perform(get("/api/v1/faculty/my-section/students").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(66)));
+    }
+
+    @Test
+    @DisplayName("TEST C - Faculty + Counsellor: Sees assigned counselling students and meeting records")
+    void testC_counsellorScope() throws Exception {
+        LoginRequest login = new LoginRequest("counsellor.cse", "Faculty@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        // Sees assigned counselling students
+        mockMvc.perform(get("/api/v1/faculty/my-counselling/students").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.length()").value(15))
+            .andExpect(jsonPath("$.data[0].registrationNumber").value("25B81A4201"));
+
+        // Sees counselling session logs
+        mockMvc.perform(get("/api/v1/faculty/my-counselling/records").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    @DisplayName("TEST D - HOD: Sees Department -> Academic Years -> Programs -> Semesters -> Sections hierarchy")
+    void testD_hodHierarchy() throws Exception {
+        LoginRequest login = new LoginRequest("hod.cse", "Admin@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/hod/my-department").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.departmentCode").value("CSE"))
+            .andExpect(jsonPath("$.data.academicYears").isArray())
+            .andExpect(jsonPath("$.data.faculty").isArray())
+            .andExpect(jsonPath("$.data.subjects").isArray());
+    }
+
+    @Test
+    @DisplayName("TEST E - Principal: Sees College Overview with Programs nested inside Departments")
+    void testE_principalHierarchy() throws Exception {
+        LoginRequest login = new LoginRequest("principal", "Admin@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/principal/college-overview").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.institutionCode").value("CRRE"))
+            .andExpect(jsonPath("$.data.departments[0].code").value("CSE"))
+            .andExpect(jsonPath("$.data.departments[0].programNames[0]").value("Artificial Intelligence & Machine Learning"));
+    }
+
+    @Test
+    @DisplayName("TEST G - Student: Sees own academic placement, educational history, and section timetable")
+    void testG_studentScope() throws Exception {
+        LoginRequest login = new LoginRequest("25b81a4201", "Student@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        // Personal profile details
+        mockMvc.perform(get("/api/v1/student/me").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.registrationNumber").value("25B81A4201"))
+            .andExpect(jsonPath("$.data.placement.departmentName").value("Computer Science and Engineering"))
+            .andExpect(jsonPath("$.data.placement.programName").value("Artificial Intelligence & Machine Learning"))
+            .andExpect(jsonPath("$.data.classTeacherName").value("CH. Rama Lakshmi"))
+            .andExpect(jsonPath("$.data.educationalHistory[0].qualificationType").value("SSC"))
+            .andExpect(jsonPath("$.data.educationalHistory[1].qualificationType").value("INTERMEDIATE"));
+
+        // Student timetable
+        mockMvc.perform(get("/api/v1/student/my-timetable").session(session))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray());
+    }
+
+    @Test
+    @DisplayName("TEST I - Add Student: Validates department scope for HOD and saves educational history")
+    void testI_addStudentFlow() throws Exception {
+        LoginRequest login = new LoginRequest("hod.cse", "Admin@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        UUID cseDeptId = UUID.fromString("20000000-0000-0000-0000-000000000001");
+        UUID aimlProgId = UUID.fromString("30000000-0000-0000-0000-000000000001");
+        UUID ayId = UUID.fromString("40000000-0000-0000-0000-000000000001");
+        UUID semId = UUID.fromString("50000000-0000-0000-0000-000000000001");
+        UUID secId = UUID.fromString("60000000-0000-0000-0000-000000000001");
+
+        String regNo = "25B81A" + (int)(Math.random() * 8999 + 1000);
+        String username = "student." + System.currentTimeMillis();
+
+        var eduHistory = java.util.List.of(
+            new com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.CreateEducationalHistoryRequest(
+                "SSC", "BSEAP", "Govt High School", "HT-12345", 2021, "General", null,
+                new java.math.BigDecimal("600"), new java.math.BigDecimal("510"), new java.math.BigDecimal("85.00"), null
+            )
+        );
+
+        var req = new com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.CreateStudentUserRequest(
+            username, username + "@crre.edu", "New Test Student", "Student@123",
+            regNo, "CRRE" + regNo, null, null, "REGULAR",
+            cseDeptId, aimlProgId, ayId, semId, secId, eduHistory
+        );
+
+        mockMvc.perform(post("/api/v1/users/students")
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.username").value(username))
+            .andExpect(jsonPath("$.data.role").value("STUDENT"));
+    }
+
+    @Test
+    @DisplayName("TEST J - Add Faculty: Professional details, no program field, assigns teaching responsibilities")
+    void testJ_addFacultyFlow() throws Exception {
+        LoginRequest login = new LoginRequest("hod.cse", "Admin@123");
+        MvcResult res = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(login)))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        MockHttpSession session = (MockHttpSession) res.getRequest().getSession(false);
+
+        UUID cseDeptId = UUID.fromString("20000000-0000-0000-0000-000000000001");
+        UUID subjectId = UUID.fromString("70000000-0000-0000-0000-000000000006"); // CS306
+        UUID secId = UUID.fromString("60000000-0000-0000-0000-000000000001");
+
+        String empNo = "E" + (System.currentTimeMillis() % 100000000);
+        String username = "fac." + (System.currentTimeMillis() % 100000000);
+
+        var teaching = java.util.List.of(
+            new com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.TeachingAssignmentInput(subjectId, secId)
+        );
+
+        var req = new com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.CreateFacultyUserRequest(
+            username, username + "@crre.edu", "Dr. Test Faculty", "Faculty@123",
+            empNo, cseDeptId, "Assistant Professor", "Ph.D", "Cyber Security",
+            "5 Years", "test.faculty@crre.edu", teaching, null, false
+        );
+
+        mockMvc.perform(post("/api/v1/users/faculty")
+                .session(session)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(req)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.username").value(username))
+            .andExpect(jsonPath("$.data.role").value("FACULTY"));
     }
 }

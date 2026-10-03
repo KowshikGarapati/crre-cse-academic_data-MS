@@ -24,6 +24,7 @@ public class UserPrincipal implements UserDetails {
     private final Long apaarNumber;
     private final boolean enabled;
     private final Collection<? extends GrantedAuthority> authorities;
+    private final User user;
 
     public UserPrincipal(
         UUID id,
@@ -37,7 +38,8 @@ public class UserPrincipal implements UserDetails {
         Long aadharNumber,
         Long apaarNumber,
         boolean enabled,
-        Collection<? extends GrantedAuthority> authorities
+        Collection<? extends GrantedAuthority> authorities,
+        User user
     ) {
         this.id = id;
         this.username = username;
@@ -51,6 +53,7 @@ public class UserPrincipal implements UserDetails {
         this.apaarNumber = apaarNumber;
         this.enabled = enabled;
         this.authorities = authorities;
+        this.user = user;
     }
 
     public static UserPrincipal create(User user) {
@@ -70,8 +73,13 @@ public class UserPrincipal implements UserDetails {
             user.getAadharNumber(),
             user.getApaarNumber(),
             user.isEnabled(),
-            authorities
+            authorities,
+            user
         );
+    }
+
+    public User getUser() {
+        return user;
     }
 
     public UUID getId() {

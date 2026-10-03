@@ -31,6 +31,24 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Users retrieved successfully", users));
     }
 
+    @PostMapping("/students")
+    public ResponseEntity<ApiResponse<UserSummaryDto>> createStudentUser(
+        @Valid @RequestBody com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.CreateStudentUserRequest request,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        UserSummaryDto created = userService.createStudentUser(request, caller);
+        return ResponseEntity.ok(ApiResponse.success("Student user created successfully", created));
+    }
+
+    @PostMapping("/faculty")
+    public ResponseEntity<ApiResponse<UserSummaryDto>> createFacultyUser(
+        @Valid @RequestBody com.crre.academicdms.features.user.dto.ScopeAwareUserDtos.CreateFacultyUserRequest request,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        UserSummaryDto created = userService.createFacultyUser(request, caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty user created successfully", created));
+    }
+
     @PostMapping
     public ResponseEntity<ApiResponse<UserSummaryDto>> createUser(
         @Valid @RequestBody CreateUserRequest request,

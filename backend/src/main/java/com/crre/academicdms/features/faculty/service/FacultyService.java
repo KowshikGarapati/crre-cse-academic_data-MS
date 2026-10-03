@@ -1,0 +1,329 @@
+package com.crre.academicdms.features.faculty.service;
+
+import com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto;
+import com.crre.academicdms.features.academic.model.Section;
+import com.crre.academicdms.features.academic.model.Subject;
+import com.crre.academicdms.features.academic.model.TimetableEntry;
+import com.crre.academicdms.features.academic.repository.SectionRepository;
+import com.crre.academicdms.features.academic.repository.SubjectRepository;
+import com.crre.academicdms.features.academic.repository.TimetableRepository;
+import com.crre.academicdms.features.counselling.model.CounsellingAssignment;
+import com.crre.academicdms.features.counselling.model.CounsellingRecord;
+import com.crre.academicdms.features.counselling.repository.CounsellingAssignmentRepository;
+import com.crre.academicdms.features.counselling.repository.CounsellingRecordRepository;
+import com.crre.academicdms.features.faculty.dto.FacultyDtos.*;
+import com.crre.academicdms.features.faculty.model.FacultyProfile;
+import com.crre.academicdms.features.faculty.repository.FacultyProfileRepository;
+import com.crre.academicdms.features.responsibility.model.Responsibility;
+import com.crre.academicdms.features.responsibility.repository.ResponsibilityRepository;
+import com.crre.academicdms.features.student.model.Student;
+import com.crre.academicdms.features.student.model.StudentEnrollment;
+import com.crre.academicdms.features.student.repository.StudentEnrollmentRepository;
+import com.crre.academicdms.features.student.repository.StudentRepository;
+import com.crre.academicdms.features.user.model.Role;
+import com.crre.academicdms.security.UserPrincipal;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+
+@Service
+public class FacultyService {
+
+    private final ResponsibilityRepository responsibilityRepository;
+    private final TimetableRepository timetableRepository;
+    private final SectionRepository sectionRepository;
+    private final StudentEnrollmentRepository enrollmentRepository;
+    private final StudentRepository studentRepository;
+    private final CounsellingAssignmentRepository counsellingAssignmentRepository;
+    private final CounsellingRecordRepository counsellingRecordRepository;
+    private final FacultyProfileRepository facultyProfileRepository;
+
+    public FacultyService(
+        ResponsibilityRepository responsibilityRepository,
+        TimetableRepository timetableRepository,
+        SectionRepository sectionRepository,
+        StudentEnrollmentRepository enrollmentRepository,
+        StudentRepository studentRepository,
+        CounsellingAssignmentRepository counsellingAssignmentRepository,
+        CounsellingRecordRepository counsellingRecordRepository,
+        FacultyProfileRepository facultyProfileRepository
+    ) {
+        this.responsibilityRepository = responsibilityRepository;
+        this.timetableRepository = timetableRepository;
+        this.sectionRepository = sectionRepository;
+        this.enrollmentRepository = enrollmentRepository;
+        this.studentRepository = studentRepository;
+        this.counsellingAssignmentRepository = counsellingAssignmentRepository;
+        this.counsellingRecordRepository = counsellingRecordRepository;
+        this.facultyProfileRepository = facultyProfileRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public List<MySubjectDto> getMySubjects(UserPrincipal caller) {
+        List<Responsibility> teaching = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), "TEACHING", "ACTIVE"
+        );
+
+        return teaching.stream()
+            .filter(r -> r.getSubject() != null && r.getSection() != null)
+            .map(r -> new MySubjectDto(
+                r.getSubject().getId(),
+                r.getSubject().getCode(),
+                r.getSubject().getName(),
+                r.getSubject().getType(),
+                r.getSubject().getCredits(),
+                r.getSection().getId(),
+                r.getSection().getSectionName(),
+                r.getSection().getSemester().getProgram().getName(),
+                r.getSection().getSemester().getTermName()
+            ))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<MyClassDto> getMyClasses(UserPrincipal caller) {
+        List<Responsibility> teaching = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), "TEACHING", "ACTIVE"
+        );
+
+        Map<UUID, MyClassDto> classMap = new LinkedHashMap<>();
+        for (Responsibility r : teaching) {
+            if (r.getSection() != null && r.getSubject() != null) {
+                Section sec = r.getSection();
+                Subject sub = r.getSubject();
+                long count = enrollmentRepository.findBySectionId(sec.getId()).size();
+                classMap.put(sec.getId(), new MyClassDto(
+                    sec.getId(),
+                    sec.getSectionName(),
+                    sec.getSemester().getProgram().getName(),
+                    sec.getSemester().getTermName(),
+                    sub.getCode(),
+                    sub.getName(),
+                    count
+                ));
+            }
+        }
+        return new ArrayList<>(classMap.values());
+    }
+
+    @Transactional(readOnly = true)
+    public List<FacultyTimetableEntryDto> getMyTimetable(UserPrincipal caller) {
+        List<TimetableEntry> entries = timetableRepository.findAll().stream()
+            .filter(e -> e.getFacultyUser() != null && e.getFacultyUser().getId().equals(caller.getId()))
+            .sorted(Comparator.comparing(TimetableEntry::getDayOfWeek).thenComparingInt(TimetableEntry::getPeriodNumber))
+            .toList();
+
+        return entries.stream()
+            .map(e -> new FacultyTimetableEntryDto(
+                e.getId(),
+                e.getDayOfWeek(),
+                e.getPeriodNumber(),
+                e.getStartTime(),
+                e.getEndTime(),
+                e.getSubject().getCode(),
+                e.getSubject().getName(),
+                e.getSection().getSectionName(),
+                e.getSection().getSemester().getTermName(),
+                e.getRoomNumber() != null ? e.getRoomNumber() : "LH-301"
+            ))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MySectionOverviewDto getMySectionOverview(UserPrincipal caller) {
+        List<Responsibility> classTeacherResps = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), "CLASS_TEACHER", "ACTIVE"
+        );
+
+        if (classTeacherResps.isEmpty() || classTeacherResps.get(0).getSection() == null) {
+            return null;
+        }
+
+        Section sec = classTeacherResps.get(0).getSection();
+        List<StudentEnrollment> enrollments = enrollmentRepository.findBySectionId(sec.getId());
+        long total = enrollments.size();
+        long regular = enrollments.stream().filter(e -> "REGULAR".equalsIgnoreCase(e.getStudent().getEntryType())).count();
+        long lateral = enrollments.stream().filter(e -> "LATERAL".equalsIgnoreCase(e.getStudent().getEntryType())).count();
+
+        return new MySectionOverviewDto(
+            sec.getId(),
+            sec.getSectionName(),
+            sec.getSemester().getProgram().getName(),
+            sec.getSemester().getTermName(),
+            sec.getSemester().getAcademicYear().getYearName(),
+            caller.getFullName(),
+            total,
+            regular,
+            lateral
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentDto> getMySectionStudents(UserPrincipal caller) {
+        List<Responsibility> classTeacherResps = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), "CLASS_TEACHER", "ACTIVE"
+        );
+
+        if (classTeacherResps.isEmpty() || classTeacherResps.get(0).getSection() == null) {
+            throw new AccessDeniedException("User is not the designated Class Teacher for any section");
+        }
+
+        UUID sectionId = classTeacherResps.get(0).getSection().getId();
+        return getSectionStudentsInternal(sectionId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentDto> getStudentsForClass(UUID sectionId, UserPrincipal caller) {
+        // Enforce Scope:
+        // Caller must be ADMIN, PRINCIPAL, HOD of department, Class Teacher of section, or Teaching a subject in this section
+        boolean authorized = caller.getRole() == Role.ADMIN
+            || caller.getRole() == Role.PRINCIPAL
+            || isHodOfSection(caller, sectionId)
+            || isClassTeacherOfSection(caller, sectionId)
+            || isTeachingSection(caller, sectionId);
+
+        if (!authorized) {
+            throw new AccessDeniedException("Access denied: You are not authorized to view students for this section");
+        }
+
+        return getSectionStudentsInternal(sectionId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CounsellingStudentDto> getMyCounsellingStudents(UserPrincipal caller) {
+        List<CounsellingAssignment> assignments = counsellingAssignmentRepository.findByCounsellorIdAndStatus(
+            caller.getId(), "ACTIVE"
+        );
+
+        return assignments.stream()
+            .sorted(Comparator.comparing(a -> a.getStudent().getRegistrationNumber()))
+            .map(a -> {
+                Student s = a.getStudent();
+                List<StudentEnrollment> enrollments = enrollmentRepository.findByStudentId(s.getId());
+                Section sec = enrollments.isEmpty() ? null : enrollments.get(0).getSection();
+                List<CounsellingRecord> records = counsellingRecordRepository.findByCounsellorIdAndStudentIdOrderByMeetingDateDesc(
+                    caller.getId(), s.getId()
+                );
+                CounsellingRecord lastRecord = records.isEmpty() ? null : records.get(0);
+
+                return new CounsellingStudentDto(
+                    s.getId(),
+                    s.getRegistrationNumber(),
+                    s.getFullName(),
+                    s.getEntryType(),
+                    sec != null ? sec.getSectionName() : "N/A",
+                    sec != null ? sec.getSemester().getProgram().getName() : "N/A",
+                    sec != null ? sec.getSemester().getTermName() : "N/A",
+                    records.size(),
+                    lastRecord != null ? lastRecord.getMeetingDate() : null,
+                    lastRecord != null ? lastRecord.getStatus() : "NO_SESSIONS"
+                );
+            })
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CounsellingRecordDto> getMyCounsellingRecords(UserPrincipal caller) {
+        List<CounsellingRecord> records = counsellingRecordRepository.findByCounsellorIdOrderByMeetingDateDesc(caller.getId());
+        return records.stream()
+            .map(r -> new CounsellingRecordDto(
+                r.getId(),
+                r.getStudent().getId(),
+                r.getStudent().getRegistrationNumber(),
+                r.getStudent().getFullName(),
+                r.getMeetingDate(),
+                r.getRecordType(),
+                r.getRemarks(),
+                r.getActionPlan(),
+                r.getFollowUpDate(),
+                r.getStatus()
+            ))
+            .toList();
+    }
+
+    @Transactional
+    public CounsellingRecordDto createCounsellingRecord(CreateCounsellingRecordRequest req, UserPrincipal caller) {
+        boolean assigned = counsellingAssignmentRepository.existsByCounsellorIdAndStudentIdAndStatus(
+            caller.getId(), req.studentId(), "ACTIVE"
+        );
+
+        if (!assigned && caller.getRole() != Role.ADMIN) {
+            throw new AccessDeniedException("Access denied: You are not assigned as counsellor for this student");
+        }
+
+        Student student = studentRepository.findById(req.studentId())
+            .orElseThrow(() -> new IllegalArgumentException("Student not found"));
+
+        CounsellingRecord record = new CounsellingRecord(
+            caller.getUser(),
+            student,
+            req.meetingDate() != null ? req.meetingDate() : java.time.LocalDate.now(),
+            req.recordType() != null ? req.recordType() : "GENERAL",
+            req.remarks(),
+            req.actionPlan(),
+            req.followUpDate(),
+            req.status() != null ? req.status() : "OPEN"
+        );
+
+        CounsellingRecord saved = counsellingRecordRepository.save(record);
+
+        return new CounsellingRecordDto(
+            saved.getId(),
+            student.getId(),
+            student.getRegistrationNumber(),
+            student.getFullName(),
+            saved.getMeetingDate(),
+            saved.getRecordType(),
+            saved.getRemarks(),
+            saved.getActionPlan(),
+            saved.getFollowUpDate(),
+            saved.getStatus()
+        );
+    }
+
+    private List<StudentDto> getSectionStudentsInternal(UUID sectionId) {
+        List<StudentEnrollment> enrollments = enrollmentRepository.findBySectionId(sectionId);
+        return enrollments.stream()
+            .map(e -> {
+                Student s = e.getStudent();
+                Section sec = e.getSection();
+                return new StudentDto(
+                    s.getId(),
+                    s.getRegistrationNumber(),
+                    s.getFullName(),
+                    s.getEntryType(),
+                    s.getStatus(),
+                    sec.getId(),
+                    sec.getSectionName(),
+                    sec.getSemester().getProgram().getName(),
+                    sec.getSemester().getTermName()
+                );
+            })
+            .sorted(Comparator.comparing(StudentDto::registrationNumber))
+            .toList();
+    }
+
+    private boolean isHodOfSection(UserPrincipal caller, UUID sectionId) {
+        if (caller.getRole() != Role.HOD) return false;
+        Section sec = sectionRepository.findById(sectionId).orElse(null);
+        if (sec == null) return false;
+        UUID deptId = sec.getSemester().getProgram().getDepartment().getId();
+        return responsibilityRepository.existsByUserIdAndTypeAndDepartmentIdAndStatus(
+            caller.getId(), "HOD_DEPT", deptId, "ACTIVE"
+        );
+    }
+
+    private boolean isClassTeacherOfSection(UserPrincipal caller, UUID sectionId) {
+        return responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
+            caller.getId(), "CLASS_TEACHER", sectionId, "ACTIVE"
+        );
+    }
+
+    private boolean isTeachingSection(UserPrincipal caller, UUID sectionId) {
+        return responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
+            caller.getId(), "TEACHING", sectionId, "ACTIVE"
+        );
+    }
+}

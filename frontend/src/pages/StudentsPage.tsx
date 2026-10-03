@@ -1,39 +1,103 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
 import { academicApi } from '../api/academic.api';
-import type { StudentDto } from '../types/auth.types';
+import { facultyApi } from '../api/faculty.api';
+import { principalApi } from '../api/principal.api';
+import type { MyClassDto, MySectionOverviewDto, StudentDto } from '../types/auth.types';
 import {
   Users,
   Search,
   Award,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
 } from 'lucide-react';
 
 export const StudentsPage: React.FC = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [students, setStudents] = useState<StudentDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [sectionOverview, setSectionOverview] = useState<MySectionOverviewDto | null>(null);
+  const [myClasses, setMyClasses] = useState<MyClassDto[]>([]);
+  const [selectedClassSection, setSelectedClassSection] = useState<string>('');
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
+
+  const isClassTeacher =
+    user?.role === 'CLASS_TEACHER' ||
+    user?.responsibilities?.some(
+      (r) => r.type === 'CLASS_TEACHER' && r.status === 'ACTIVE'
+    );
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        const meta = await academicApi.getMetadata();
+    if (!user) return;
+    if (user.role === 'STUDENT') {
+      navigate('/', { replace: true });
+      return;
+    }
 
-        // Section 1 is the prototype section
-        const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
-        if (sec1) {
-          const list = await academicApi.getSectionStudents(sec1.id);
+    async function loadData() {
+      if (!user) return;
+      setLoading(true);
+      setScopeNotice(null);
+      try {
+        if (user.role === 'PRINCIPAL') {
+          const list = await principalApi.getAllStudents();
           setStudents(list);
+        } else if (isClassTeacher) {
+          const [list, overview] = await Promise.all([
+            facultyApi.getMySectionStudents(),
+            facultyApi.getMySectionOverview(),
+          ]);
+          setStudents(list);
+          setSectionOverview(overview);
+        } else if (user.role === 'FACULTY') {
+          // Ordinary faculty without class teacher responsibility
+          const classes = await facultyApi.getMyClasses();
+          setMyClasses(classes);
+          if (classes.length > 0) {
+            const firstSec = classes[0].sectionId;
+            setSelectedClassSection(firstSec);
+            const list = await facultyApi.getStudentsForClass(firstSec);
+            setStudents(list);
+          } else {
+            setScopeNotice('You are not currently assigned as a Class Teacher and have no taught classes.');
+          }
+        } else {
+          // HOD or ADMIN
+          const meta = await academicApi.getMetadata();
+          const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
+          if (sec1) {
+            const list = await academicApi.getSectionStudents(sec1.id);
+            setStudents(list);
+          }
         }
       } catch (err) {
         console.error('Failed to load students', err);
+        setScopeNotice(err instanceof Error ? err.message : 'Access denied to this student scope.');
       } finally {
         setLoading(false);
       }
     }
+
     loadData();
-  }, []);
+  }, [user, isClassTeacher, navigate]);
+
+  const handleClassChange = async (sectionId: string) => {
+    setSelectedClassSection(sectionId);
+    setLoading(true);
+    try {
+      const list = await facultyApi.getStudentsForClass(sectionId);
+      setStudents(list);
+    } catch (err) {
+      console.error('Failed to load students for class', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredStudents = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -44,6 +108,8 @@ export const StudentsPage: React.FC = () => {
         s.registrationNumber.toLowerCase().includes(q)
     );
   }, [students, search]);
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -60,10 +126,14 @@ export const StudentsPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-bold text-slate-900">
-                    Section 1 Enrolled Students
+                    {user.role === 'PRINCIPAL'
+                      ? 'College Students Directory'
+                      : isClassTeacher
+                      ? `${sectionOverview?.sectionName || 'Section 1'} Enrolled Students`
+                      : 'My Class Students'}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {students.length} Regular Students
+                    {students.length} Students
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -73,15 +143,42 @@ export const StudentsPage: React.FC = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <div className="p-2.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-xs flex items-center gap-2">
-                <Award className="w-4 h-4 text-teal-600 flex-shrink-0" />
-                <span>
-                  Class Teacher: <strong className="font-semibold">CH. Rama Lakshmi</strong> (DMGT)
-                </span>
-              </div>
+              {isClassTeacher && (
+                <div className="p-2.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-xs flex items-center gap-2">
+                  <Award className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                  <span>
+                    Class Teacher: <strong className="font-semibold">{sectionOverview?.classTeacherName || user.fullName}</strong>
+                  </span>
+                </div>
+              )}
+
+              {/* Class Selector for Ordinary Faculty */}
+              {!isClassTeacher && user.role === 'FACULTY' && myClasses.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-600">Select Class:</span>
+                  <select
+                    value={selectedClassSection}
+                    onChange={(e) => handleClassChange(e.target.value)}
+                    className="text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                  >
+                    {myClasses.map((c) => (
+                      <option key={c.sectionId + c.subjectId} value={c.sectionId}>
+                        {c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
         </div>
+
+        {scopeNotice && (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <span>{scopeNotice}</span>
+          </div>
+        )}
 
         {/* Filter and Search Bar */}
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -114,12 +211,12 @@ export const StudentsPage: React.FC = () => {
           {loading ? (
             <div className="p-12 text-center text-slate-500">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
-              <p className="text-sm">Loading Section 1 Students...</p>
+              <p className="text-sm">Loading Students...</p>
             </div>
           ) : filteredStudents.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               <Users className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-              <p className="text-sm font-semibold text-slate-700">No students match your query</p>
+              <p className="text-sm font-semibold text-slate-700">No students found</p>
               <p className="text-xs text-slate-400 mt-1">Try searching with a different roll number or name.</p>
             </div>
           ) : (
@@ -149,7 +246,7 @@ export const StudentsPage: React.FC = () => {
                         {s.fullName}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
-                        B.Tech AI&ML (Sem 3)
+                        {s.programName || 'B.Tech AI&ML'} ({s.semesterName || 'Sem 3'})
                       </td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
@@ -157,7 +254,9 @@ export const StudentsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          s.entryType === 'LATERAL' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700'
+                        }`}>
                           {s.entryType || 'REGULAR'}
                         </span>
                       </td>

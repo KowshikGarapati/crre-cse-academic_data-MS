@@ -40,6 +40,9 @@ public class TimetableEntry {
     @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
+    @Column(name = "room_number", length = 50)
+    private String roomNumber = "LH-301";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -61,5 +64,7 @@ public class TimetableEntry {
     public void setStartTime(LocalTime startTime) { this.startTime = startTime; }
     public LocalTime getEndTime() { return endTime; }
     public void setEndTime(LocalTime endTime) { this.endTime = endTime; }
+    public String getRoomNumber() { return roomNumber; }
+    public void setRoomNumber(String roomNumber) { this.roomNumber = roomNumber; }
     public Instant getCreatedAt() { return createdAt; }
 }

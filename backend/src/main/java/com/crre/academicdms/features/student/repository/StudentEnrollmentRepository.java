@@ -12,4 +12,6 @@ import java.util.UUID;
 public interface StudentEnrollmentRepository extends JpaRepository<StudentEnrollment, UUID> {
     List<StudentEnrollment> findBySectionIdAndCurrentTrueOrderByStudentRegistrationNumberAsc(UUID sectionId);
     Optional<StudentEnrollment> findByStudentIdAndCurrentTrue(UUID studentId);
+    List<StudentEnrollment> findBySectionId(UUID sectionId);
+    List<StudentEnrollment> findByStudentId(UUID studentId);
 }

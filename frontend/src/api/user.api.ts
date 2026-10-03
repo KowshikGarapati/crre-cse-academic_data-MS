@@ -31,4 +31,20 @@ export const userApi = {
       body: JSON.stringify({ enabled }),
     });
   },
+
+  async createStudentUser(payload: import('../types/auth.types').CreateStudentUserRequest): Promise<UserSummary> {
+    const res = await request<ApiResponse<UserSummary>>('/api/v1/users/students', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.data;
+  },
+
+  async createFacultyUser(payload: import('../types/auth.types').CreateFacultyUserRequest): Promise<UserSummary> {
+    const res = await request<ApiResponse<UserSummary>>('/api/v1/users/faculty', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.data;
+  },
 };

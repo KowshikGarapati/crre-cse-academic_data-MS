@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
 import { academicApi } from '../api/academic.api';
-import type { TimetableEntryDto } from '../types/auth.types';
+import { studentApi } from '../api/student.api';
+import { facultyApi } from '../api/faculty.api';
+import type { FacultyTimetableEntryDto, TimetableEntryDto } from '../types/auth.types';
 import {
   Calendar,
   Coffee,
@@ -13,17 +16,42 @@ import {
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
 export const TimetablePage: React.FC = () => {
-  const [entries, setEntries] = useState<TimetableEntryDto[]>([]);
+  const { user } = useAuth();
+  const [sectionEntries, setSectionEntries] = useState<TimetableEntryDto[]>([]);
+  const [facultyEntries, setFacultyEntries] = useState<FacultyTimetableEntryDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'section' | 'personal'>('section');
 
   useEffect(() => {
     async function loadData() {
+      if (!user) return;
+      setLoading(true);
       try {
-        const meta = await academicApi.getMetadata();
-        const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
-        if (sec1) {
-          const list = await academicApi.getSectionTimetable(sec1.id);
-          setEntries(list);
+        if (user.role === 'STUDENT') {
+          const list = await studentApi.getMyTimetable();
+          setSectionEntries(list);
+          setViewMode('section');
+        } else if (user.role === 'FACULTY') {
+          const [facList, meta] = await Promise.all([
+            facultyApi.getMyTimetable().catch(() => []),
+            academicApi.getMetadata().catch(() => null),
+          ]);
+          setFacultyEntries(facList);
+          setViewMode(facList.length > 0 ? 'personal' : 'section');
+
+          const sec1 = meta?.sections.find((s) => s.sectionName.includes('1')) || meta?.sections[0];
+          if (sec1) {
+            const secList = await academicApi.getSectionTimetable(sec1.id).catch(() => []);
+            setSectionEntries(secList);
+          }
+        } else {
+          // HOD, PRINCIPAL, ADMIN
+          const meta = await academicApi.getMetadata();
+          const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
+          if (sec1) {
+            const list = await academicApi.getSectionTimetable(sec1.id);
+            setSectionEntries(list);
+          }
         }
       } catch (err) {
         console.error('Failed to load timetable', err);
@@ -32,14 +60,23 @@ export const TimetablePage: React.FC = () => {
       }
     }
     loadData();
-  }, []);
+  }, [user]);
 
-  // Lookup helper: day + period -> entry
-  const getEntry = (day: string, period: number) => {
-    return entries.find(
+  // Lookup helper for section timetable
+  const getSectionEntry = (day: string, period: number) => {
+    return sectionEntries.find(
       (e) => e.dayOfWeek?.toUpperCase() === day && e.periodNumber === period
     );
   };
+
+  // Lookup helper for faculty personal timetable
+  const getFacultyEntry = (day: string, period: number) => {
+    return facultyEntries.find(
+      (e) => e.dayOfWeek?.toUpperCase() === day && e.periodNumber === period
+    );
+  };
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -56,7 +93,11 @@ export const TimetablePage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-xl font-bold text-slate-900">
-                    Master Class Timetable &bull; Section 1
+                    {user.role === 'STUDENT'
+                      ? 'My Academic Class Timetable'
+                      : viewMode === 'personal'
+                      ? 'My Faculty Teaching Schedule'
+                      : 'Master Class Timetable • Section 1'}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     7 Periods &bull; 09:30 AM – 04:30 PM
@@ -68,10 +109,35 @@ export const TimetablePage: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-200">
+            <div className="flex items-center gap-3">
+              {user.role === 'FACULTY' && (
+                <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-semibold">
+                  <button
+                    onClick={() => setViewMode('personal')}
+                    className={`px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                      viewMode === 'personal'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    My Teaching Slots ({facultyEntries.length})
+                  </button>
+                  <button
+                    onClick={() => setViewMode('section')}
+                    className={`px-3 py-1.5 rounded-md transition-colors cursor-pointer ${
+                      viewMode === 'section'
+                        ? 'bg-white text-indigo-700 shadow-2xs font-bold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Section 1 Master
+                  </button>
+                </div>
+              )}
+
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-200 text-xs font-semibold">
                 <Award className="w-3.5 h-3.5 text-teal-600" />
-                Class Teacher: CH. Rama Lakshmi (DMGT)
+                Class Teacher: CH. Rama Lakshmi
               </span>
             </div>
           </div>
@@ -83,11 +149,11 @@ export const TimetablePage: React.FC = () => {
             <span className="font-semibold text-slate-700">Course Categories:</span>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-blue-100 border border-blue-300"></span>
-              <span className="text-slate-600">Theory Courses (3.0 Credits)</span>
+              <span className="text-slate-600">Theory Courses</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300"></span>
-              <span className="text-slate-600">Lab Sessions (1.5 Credits)</span>
+              <span className="text-slate-600">Lab Sessions</span>
             </div>
           </div>
 
@@ -105,109 +171,185 @@ export const TimetablePage: React.FC = () => {
         {/* Timetable Grid */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
           {loading ? (
-            <div className="p-12 text-center text-slate-500">
+            <div className="p-16 text-center text-slate-500">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
-              <p className="text-sm">Loading weekly schedule...</p>
+              <p className="text-sm">Loading timetable grid...</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-center text-xs border-collapse">
+              <table className="w-full text-center border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
-                    <th className="py-3 px-3 w-28 text-left border-r border-slate-200">Day</th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                  <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                    <th className="p-3 border-r border-slate-200 w-28 bg-slate-200/60">Day / Period</th>
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 1</div>
-                      <div className="text-[10px] text-slate-400 font-normal">09:30 - 10:20</div>
+                      <div className="text-[10px] text-slate-500 font-normal">09:30 - 10:20</div>
                     </th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 2</div>
-                      <div className="text-[10px] text-slate-400 font-normal">10:20 - 11:10</div>
+                      <div className="text-[10px] text-slate-500 font-normal">10:20 - 11:10</div>
                     </th>
-                    <th className="py-2 px-1 bg-amber-50/70 text-amber-800 border-r border-slate-200 w-12">
-                      <div className="text-[10px] font-bold">BREAK</div>
-                      <div className="text-[9px] text-amber-600 font-normal">20m</div>
+                    <th className="p-2 bg-amber-50/70 border-r border-slate-200 text-amber-900 font-medium text-[11px] w-12">
+                      Break
                     </th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 3</div>
-                      <div className="text-[10px] text-slate-400 font-normal">11:30 - 12:20</div>
+                      <div className="text-[10px] text-slate-500 font-normal">11:30 - 12:20</div>
                     </th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 4</div>
-                      <div className="text-[10px] text-slate-400 font-normal">12:20 - 01:10</div>
+                      <div className="text-[10px] text-slate-500 font-normal">12:20 - 01:10</div>
                     </th>
-                    <th className="py-2 px-1 bg-orange-50/70 text-orange-800 border-r border-slate-200 w-14">
-                      <div className="text-[10px] font-bold">LUNCH</div>
-                      <div className="text-[9px] text-orange-600 font-normal">1 Hour</div>
+                    <th className="p-2 bg-orange-50/70 border-r border-slate-200 text-orange-900 font-medium text-[11px] w-14">
+                      Lunch
                     </th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 5</div>
-                      <div className="text-[10px] text-slate-400 font-normal">02:10 - 03:00</div>
+                      <div className="text-[10px] text-slate-500 font-normal">02:10 - 03:00</div>
                     </th>
-                    <th className="py-2 px-2 border-r border-slate-200">
+                    <th className="p-2.5 border-r border-slate-200">
                       <div>Period 6</div>
-                      <div className="text-[10px] text-slate-400 font-normal">03:00 - 03:50</div>
+                      <div className="text-[10px] text-slate-500 font-normal">03:00 - 03:50</div>
                     </th>
-                    <th className="py-2 px-2">
+                    <th className="p-2.5">
                       <div>Period 7</div>
-                      <div className="text-[10px] text-slate-400 font-normal">03:50 - 04:30</div>
+                      <div className="text-[10px] text-slate-500 font-normal">03:50 - 04:30</div>
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {DAYS.map((day) => (
-                    <tr key={day} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-3 text-left font-bold text-slate-800 bg-slate-50 border-r border-slate-200 text-xs">
-                        {day}
+                    <tr key={day} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-3 font-bold text-slate-800 bg-slate-50 border-r border-slate-200 text-left pl-4">
+                        {day.slice(0, 3)}
                       </td>
 
-                      {/* Period 1 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 1))}
+                      {/* Helper to render cell */}
+                      {[1, 2].map((p) => {
+                        const secEntry = getSectionEntry(day, p);
+                        const facEntry = getFacultyEntry(day, p);
+                        const isFacMode = viewMode === 'personal';
+                        const entry = isFacMode ? facEntry : secEntry;
+
+                        return (
+                          <td key={p} className="p-2 border-r border-slate-200 align-top h-20 w-32">
+                            {entry ? (
+                              <div className={`h-full p-2 rounded-lg border text-left flex flex-col justify-between ${
+                                (isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode)?.endsWith('L')
+                                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                  : 'bg-blue-50/70 border-blue-200 text-blue-950'
+                              }`}>
+                                <div>
+                                  <span className="font-mono font-bold text-[11px] text-indigo-700">
+                                    {isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode}
+                                  </span>
+                                  <div className="font-bold text-[11px] line-clamp-1">
+                                    {isFacMode ? facEntry?.subjectName : secEntry?.subjectName}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1 flex items-center justify-between">
+                                  <span>{isFacMode ? facEntry?.sectionName : secEntry?.facultyName?.split(' ')[0]}</span>
+                                  <span className="font-bold text-slate-700 font-mono">
+                                    {isFacMode ? facEntry?.roomNumber || 'LH-301' : 'LH-301'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-slate-300 font-mono text-xs">
+                                —
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      {/* Morning Break */}
+                      <td className="p-1 bg-amber-50/40 border-r border-slate-200 text-[10px] text-amber-800 font-medium writing-mode-vertical">
+                        Break
                       </td>
 
-                      {/* Period 2 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 2))}
+                      {/* Periods 3 & 4 */}
+                      {[3, 4].map((p) => {
+                        const secEntry = getSectionEntry(day, p);
+                        const facEntry = getFacultyEntry(day, p);
+                        const isFacMode = viewMode === 'personal';
+                        const entry = isFacMode ? facEntry : secEntry;
+
+                        return (
+                          <td key={p} className="p-2 border-r border-slate-200 align-top h-20 w-32">
+                            {entry ? (
+                              <div className={`h-full p-2 rounded-lg border text-left flex flex-col justify-between ${
+                                (isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode)?.endsWith('L')
+                                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                  : 'bg-blue-50/70 border-blue-200 text-blue-950'
+                              }`}>
+                                <div>
+                                  <span className="font-mono font-bold text-[11px] text-indigo-700">
+                                    {isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode}
+                                  </span>
+                                  <div className="font-bold text-[11px] line-clamp-1">
+                                    {isFacMode ? facEntry?.subjectName : secEntry?.subjectName}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1 flex items-center justify-between">
+                                  <span>{isFacMode ? facEntry?.sectionName : secEntry?.facultyName?.split(' ')[0]}</span>
+                                  <span className="font-bold text-slate-700 font-mono">
+                                    {isFacMode ? facEntry?.roomNumber || 'LH-301' : 'LH-301'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-slate-300 font-mono text-xs">
+                                —
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+
+                      {/* Lunch */}
+                      <td className="p-1 bg-orange-50/40 border-r border-slate-200 text-[10px] text-orange-800 font-medium">
+                        Lunch
                       </td>
 
-                      {/* Break Slot */}
-                      <td className="p-1 bg-amber-50/40 border-r border-slate-200 text-amber-800 text-[10px] font-medium vertical-middle">
-                        <div className="rotate-180 writing-mode-vertical py-2 mx-auto">
-                          Break
-                        </div>
-                      </td>
+                      {/* Periods 5, 6, 7 */}
+                      {[5, 6, 7].map((p) => {
+                        const secEntry = getSectionEntry(day, p);
+                        const facEntry = getFacultyEntry(day, p);
+                        const isFacMode = viewMode === 'personal';
+                        const entry = isFacMode ? facEntry : secEntry;
 
-                      {/* Period 3 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 3))}
-                      </td>
-
-                      {/* Period 4 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 4))}
-                      </td>
-
-                      {/* Lunch Slot */}
-                      <td className="p-1 bg-orange-50/40 border-r border-slate-200 text-orange-800 text-[10px] font-medium vertical-middle">
-                        <div className="rotate-180 writing-mode-vertical py-2 mx-auto">
-                          Lunch
-                        </div>
-                      </td>
-
-                      {/* Period 5 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 5))}
-                      </td>
-
-                      {/* Period 6 */}
-                      <td className="p-1.5 border-r border-slate-200 align-top">
-                        {renderSlot(getEntry(day, 6))}
-                      </td>
-
-                      {/* Period 7 */}
-                      <td className="p-1.5 align-top">
-                        {renderSlot(getEntry(day, 7))}
-                      </td>
+                        return (
+                          <td key={p} className="p-2 border-r border-slate-200 align-top h-20 w-32 last:border-r-0">
+                            {entry ? (
+                              <div className={`h-full p-2 rounded-lg border text-left flex flex-col justify-between ${
+                                (isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode)?.endsWith('L')
+                                  ? 'bg-amber-50/70 border-amber-200 text-amber-950'
+                                  : 'bg-blue-50/70 border-blue-200 text-blue-950'
+                              }`}>
+                                <div>
+                                  <span className="font-mono font-bold text-[11px] text-indigo-700">
+                                    {isFacMode ? facEntry?.subjectCode : secEntry?.subjectCode}
+                                  </span>
+                                  <div className="font-bold text-[11px] line-clamp-1">
+                                    {isFacMode ? facEntry?.subjectName : secEntry?.subjectName}
+                                  </div>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-1 flex items-center justify-between">
+                                  <span>{isFacMode ? facEntry?.sectionName : secEntry?.facultyName?.split(' ')[0]}</span>
+                                  <span className="font-bold text-slate-700 font-mono">
+                                    {isFacMode ? facEntry?.roomNumber || 'LH-301' : 'LH-301'}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-slate-300 font-mono text-xs">
+                                —
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -219,41 +361,3 @@ export const TimetablePage: React.FC = () => {
     </div>
   );
 };
-
-function renderSlot(entry?: TimetableEntryDto) {
-  if (!entry) {
-    return (
-      <div className="h-full min-h-[56px] rounded bg-slate-50/50 border border-dashed border-slate-200 flex items-center justify-center text-slate-300 text-[11px]">
-        Free
-      </div>
-    );
-  }
-
-  const isLab = entry.subjectName?.toLowerCase().includes('lab');
-
-  return (
-    <div
-      className={`h-full min-h-[56px] p-2 rounded-lg text-left transition-all border ${
-        isLab
-          ? 'bg-amber-50/80 border-amber-200 hover:border-amber-400'
-          : 'bg-indigo-50/70 border-indigo-200 hover:border-indigo-400'
-      }`}
-    >
-      <div className="flex items-center justify-between gap-1">
-        <span className="font-bold text-slate-900 text-[11px] leading-tight line-clamp-1">
-          {entry.subjectName}
-        </span>
-        <span
-          className={`text-[9px] px-1 py-0.2 rounded font-mono font-semibold ${
-            isLab ? 'bg-amber-200 text-amber-800' : 'bg-indigo-200 text-indigo-800'
-          }`}
-        >
-          {entry.subjectCode}
-        </span>
-      </div>
-      <div className="text-[10px] text-slate-600 mt-1 flex items-center justify-between">
-        <span className="truncate">{entry.facultyName || 'Staff'}</span>
-      </div>
-    </div>
-  );
-}

@@ -64,6 +64,23 @@ public class AcademicService {
     }
 
     @Transactional(readOnly = true)
+    public List<StudentDto> getStudentsForSection(UUID sectionId, com.crre.academicdms.security.UserPrincipal caller) {
+        if (caller != null) {
+            boolean authorized = caller.getRole() == com.crre.academicdms.features.user.model.Role.ADMIN
+                || caller.getRole() == com.crre.academicdms.features.user.model.Role.PRINCIPAL
+                || isHodOfSection(caller, sectionId)
+                || isClassTeacherOfSection(caller, sectionId)
+                || isTeachingSection(caller, sectionId)
+                || isStudentOfSection(caller, sectionId);
+
+            if (!authorized) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to view students for this section");
+            }
+        }
+        return getStudentsForSection(sectionId);
+    }
+
+    @Transactional(readOnly = true)
     public List<StudentDto> getStudentsForSection(UUID sectionId) {
         List<StudentEnrollment> enrollments = studentEnrollmentRepository
             .findBySectionIdAndCurrentTrueOrderByStudentRegistrationNumberAsc(sectionId);
@@ -86,6 +103,34 @@ public class AcademicService {
                 semester != null ? semester.getTermName() : null
             );
         }).toList();
+    }
+
+    private boolean isHodOfSection(com.crre.academicdms.security.UserPrincipal caller, UUID sectionId) {
+        if (caller.getRole() != com.crre.academicdms.features.user.model.Role.HOD) return false;
+        Section sec = sectionRepository.findById(sectionId).orElse(null);
+        if (sec == null) return false;
+        UUID deptId = sec.getSemester().getProgram().getDepartment().getId();
+        return responsibilityRepository.existsByUserIdAndTypeAndDepartmentIdAndStatus(
+            caller.getId(), "HOD_DEPT", deptId, "ACTIVE"
+        );
+    }
+
+    private boolean isClassTeacherOfSection(com.crre.academicdms.security.UserPrincipal caller, UUID sectionId) {
+        return responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
+            caller.getId(), "CLASS_TEACHER", sectionId, "ACTIVE"
+        );
+    }
+
+    private boolean isTeachingSection(com.crre.academicdms.security.UserPrincipal caller, UUID sectionId) {
+        return responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
+            caller.getId(), "TEACHING", sectionId, "ACTIVE"
+        );
+    }
+
+    private boolean isStudentOfSection(com.crre.academicdms.security.UserPrincipal caller, UUID sectionId) {
+        if (caller.getRole() != com.crre.academicdms.features.user.model.Role.STUDENT) return false;
+        return studentEnrollmentRepository.findBySectionId(sectionId).stream()
+            .anyMatch(e -> e.getStudent().getUser() != null && e.getStudent().getUser().getId().equals(caller.getId()));
     }
 
     @Transactional(readOnly = true)

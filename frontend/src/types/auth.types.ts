@@ -161,3 +161,264 @@ export interface ResponsibilityRequest {
   sectionId?: string;
   description?: string;
 }
+
+// ==================== FACULTY DTOS ====================
+export interface MySubjectDto {
+  subjectId: string;
+  code: string;
+  name: string;
+  type: string;
+  credits: number;
+  sectionId: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+}
+
+export interface MyClassDto {
+  sectionId: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+  academicYearName: string;
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  studentCount: number;
+}
+
+export interface FacultyTimetableEntryDto {
+  id: string;
+  dayOfWeek: string;
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+  subjectCode: string;
+  subjectName: string;
+  sectionName: string;
+  semesterName: string;
+  roomNumber?: string;
+}
+
+export interface MySectionOverviewDto {
+  sectionId: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+  academicYearName: string;
+  classTeacherName: string;
+  totalStudents: number;
+  regularStudents: number;
+  lateralStudents: number;
+}
+
+export interface CounsellingStudentDto {
+  studentId: string;
+  registrationNumber: string;
+  fullName: string;
+  entryType: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+  totalSessions: number;
+  lastMeetingDate?: string | null;
+  lastStatus: string;
+}
+
+export interface CounsellingRecordDto {
+  id: string;
+  counsellorName: string;
+  studentId: string;
+  studentRegistrationNumber: string;
+  studentName: string;
+  meetingDate: string;
+  recordType: string;
+  remarks: string;
+  actionPlan?: string;
+  followUpDate?: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface CreateCounsellingRecordRequest {
+  studentId: string;
+  meetingDate: string;
+  recordType: string;
+  remarks: string;
+  actionPlan?: string;
+  followUpDate?: string;
+  status: string;
+}
+
+export interface FacultyProfileDto {
+  id: string;
+  employeeNumber: string;
+  departmentName: string;
+  designation: string;
+  qualification?: string;
+  specialization?: string;
+  professionalExperience?: string;
+  institutionalContact?: string;
+  activeStatus: string;
+}
+
+// ==================== STUDENT DTOS ====================
+export interface EducationalHistoryDto {
+  id: string;
+  qualificationType: string;
+  boardOrUniversity: string;
+  institutionName: string;
+  hallTicketNumber?: string;
+  completionYear: number;
+  streamOrBranch?: string;
+  gradeOrCgpa?: string;
+  maxMarks?: number;
+  marksObtained?: number;
+  percentage?: number;
+  remarks?: string;
+}
+
+export interface StudentFullProfileDto {
+  id: string;
+  registrationNumber: string;
+  fullName: string;
+  entryType: string;
+  email: string;
+  departmentName: string;
+  programName: string;
+  academicYearName: string;
+  semesterName: string;
+  sectionName: string;
+  classTeacherName?: string;
+  counsellorName?: string;
+  educationalHistory: EducationalHistoryDto[];
+}
+
+// ==================== HOD DTOS ====================
+export interface HodSectionDto {
+  sectionId: string;
+  sectionName: string;
+  sectionNumber: number;
+  classTeacherName?: string;
+  studentCount: number;
+}
+
+export interface HodSemesterDto {
+  semesterId: string;
+  termName: string;
+  semesterNumber: number;
+  sections: HodSectionDto[];
+}
+
+export interface HodProgramDto {
+  programId: string;
+  programCode: string;
+  programName: string;
+  degree: string;
+  semesters: HodSemesterDto[];
+}
+
+export interface HodAcademicYearDto {
+  academicYearId: string;
+  yearName: string;
+  isCurrent: boolean;
+  programs: HodProgramDto[];
+}
+
+export interface DepartmentHierarchyDto {
+  departmentId: string;
+  departmentCode: string;
+  departmentName: string;
+  hodName: string;
+  totalFaculty: number;
+  totalStudents: number;
+  academicYears: HodAcademicYearDto[];
+}
+
+// ==================== PRINCIPAL DTOS ====================
+export interface PrincipalProgramDto {
+  programId: string;
+  code: string;
+  name: string;
+  degree: string;
+  studentCount: number;
+}
+
+export interface PrincipalDepartmentDto {
+  departmentId: string;
+  code: string;
+  name: string;
+  hodName?: string;
+  facultyCount: number;
+  studentCount: number;
+  programs: PrincipalProgramDto[];
+}
+
+export interface CollegeOverviewDto {
+  institutionName: string;
+  code: string;
+  principalName: string;
+  totalDepartments: number;
+  totalPrograms: number;
+  totalFaculty: number;
+  totalStudents: number;
+  departments: PrincipalDepartmentDto[];
+}
+
+// ==================== CREATION REQUESTS ====================
+export interface CreateEducationalHistoryRequest {
+  qualificationType: string;
+  boardOrUniversity: string;
+  institutionName: string;
+  hallTicketNumber?: string;
+  completionYear: number;
+  streamOrBranch?: string;
+  gradeOrCgpa?: string;
+  maxMarks?: number;
+  marksObtained?: number;
+  percentage?: number;
+  remarks?: string;
+}
+
+export interface CreateStudentUserRequest {
+  username: string;
+  email: string;
+  fullName: string;
+  password?: string;
+  registrationNumber: string;
+  uniqueId?: string;
+  aadharNumber?: number;
+  apaarNumber?: number;
+  entryType: string;
+  departmentId: string;
+  programId: string;
+  academicYearId: string;
+  semesterId: string;
+  sectionId: string;
+  educationalHistory: CreateEducationalHistoryRequest[];
+}
+
+export interface TeachingAssignmentInput {
+  subjectId: string;
+  sectionId: string;
+}
+
+export interface CreateFacultyUserRequest {
+  username: string;
+  email: string;
+  fullName: string;
+  password?: string;
+  employeeNumber: string;
+  aadharNumber?: number;
+  apaarNumber?: number;
+  departmentId: string;
+  designation: string;
+  qualification?: string;
+  specialization?: string;
+  professionalExperience?: string;
+  institutionalContact?: string;
+  teachingAssignments?: TeachingAssignmentInput[];
+  classTeacherSectionId?: string;
+  counsellor?: boolean;
+}
+
