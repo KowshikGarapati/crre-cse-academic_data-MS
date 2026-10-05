@@ -136,7 +136,9 @@ public class AcademicService {
     @Transactional(readOnly = true)
     public List<TimetableEntryDto> getTimetableForSection(UUID sectionId) {
         return timetableRepository.findBySectionIdOrderByDayOfWeekAscPeriodNumberAsc(sectionId)
-            .stream().map(t -> new TimetableEntryDto(
+            .stream()
+            .sorted(com.crre.academicdms.features.academic.util.TimetableUtils.CHRONOLOGICAL_COMPARATOR)
+            .map(t -> new TimetableEntryDto(
                 t.getId(),
                 t.getSection().getId(),
                 t.getSection().getSectionName(),

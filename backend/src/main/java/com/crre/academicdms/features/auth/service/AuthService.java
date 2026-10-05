@@ -46,8 +46,8 @@ public class AuthService {
     public AuthResponse login(LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         Authentication authentication = authenticationManager.authenticate(
             new UsernamePasswordAuthenticationToken(
-                request.identifier().trim(),
-                request.password()
+                request.identifier() != null ? request.identifier().trim() : "",
+                request.password() != null ? request.password().trim() : ""
             )
         );
 

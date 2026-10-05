@@ -118,11 +118,16 @@ public class UserService {
             throw new IllegalArgumentException("Registration number already exists: " + req.registrationNumber());
         }
 
+        String rawPassword = req.password() != null ? req.password().trim() : "";
+        if (rawPassword.isEmpty()) {
+            throw new IllegalArgumentException("Password cannot be blank");
+        }
+
         // 1. Create User
         User user = new User(
             req.username().trim(),
             req.email().trim(),
-            passwordEncoder.encode(req.password()),
+            passwordEncoder.encode(rawPassword),
             req.fullName().trim(),
             Role.STUDENT
         );
@@ -197,11 +202,16 @@ public class UserService {
         Department dept = departmentRepository.findById(req.departmentId())
             .orElseThrow(() -> new IllegalArgumentException("Department not found"));
 
+        String rawPassword = req.password() != null ? req.password().trim() : "";
+        if (rawPassword.isEmpty()) {
+            throw new IllegalArgumentException("Password cannot be blank");
+        }
+
         // 1. Create User (Role = FACULTY)
         User user = new User(
             req.username().trim(),
             req.email().trim(),
-            passwordEncoder.encode(req.password()),
+            passwordEncoder.encode(rawPassword),
             req.fullName().trim(),
             Role.FACULTY
         );
@@ -263,10 +273,15 @@ public class UserService {
             throw new IllegalArgumentException("Email already exists: " + req.email());
         }
 
+        String rawPassword = req.password() != null ? req.password().trim() : "";
+        if (rawPassword.isEmpty()) {
+            throw new IllegalArgumentException("Password cannot be blank");
+        }
+
         User user = new User(
             req.username().trim(),
             req.email().trim(),
-            passwordEncoder.encode(req.password()),
+            passwordEncoder.encode(rawPassword),
             req.fullName().trim(),
             req.role()
         );
@@ -333,6 +348,9 @@ public class UserService {
         user.setAadharNumber(req.aadharNumber());
         user.setApaarNumber(req.apaarNumber());
         user.setEnabled(req.enabled());
+        if (req.password() != null && !req.password().trim().isEmpty()) {
+            user.setPasswordHash(passwordEncoder.encode(req.password().trim()));
+        }
 
         User saved = userRepository.save(user);
         List<ResponsibilitySummaryDto> resps = responsibilityService.getActiveResponsibilitiesForUser(saved.getId());

@@ -13,5 +13,6 @@ public record UpdateUserRequest(
     String uniqueId,
     Long aadharNumber,
     Long apaarNumber,
-    boolean enabled
+    boolean enabled,
+    String password
 ) {}

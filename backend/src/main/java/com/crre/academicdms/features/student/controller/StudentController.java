@@ -3,19 +3,22 @@ package com.crre.academicdms.features.student.controller;
 import com.crre.academicdms.common.ApiResponse;
 import com.crre.academicdms.features.academic.dto.AcademicDtos.TimetableEntryDto;
 import com.crre.academicdms.features.student.dto.StudentDtos.StudentCounsellingSummaryDto;
+import com.crre.academicdms.features.student.dto.StudentDtos.StudentDetailDto;
 import com.crre.academicdms.features.student.dto.StudentDtos.StudentProfileDetailsDto;
 import com.crre.academicdms.features.student.service.StudentService;
 import com.crre.academicdms.security.UserPrincipal;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/student")
+@RequestMapping({"/api/v1/student", "/api/v1/students"})
 public class StudentController {
 
     private final StudentService studentService;
@@ -46,5 +49,14 @@ public class StudentController {
     ) {
         StudentCounsellingSummaryDto summary = studentService.getMyCounselling(caller);
         return ResponseEntity.ok(ApiResponse.success("Student counselling summary retrieved", summary));
+    }
+
+    @GetMapping("/{studentId}")
+    public ResponseEntity<ApiResponse<StudentDetailDto>> getStudentDetails(
+        @PathVariable UUID studentId,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        StudentDetailDto details = studentService.getStudentDetails(studentId, caller);
+        return ResponseEntity.ok(ApiResponse.success("Student details retrieved successfully", details));
     }
 }

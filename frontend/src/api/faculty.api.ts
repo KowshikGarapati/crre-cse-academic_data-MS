@@ -34,6 +34,14 @@ export const facultyApi = {
     return res.data;
   },
 
+  async getTodayClasses(day?: string): Promise<FacultyTimetableEntryDto[]> {
+    const url = day ? `/api/v1/faculty/today-classes?day=${encodeURIComponent(day)}` : '/api/v1/faculty/today-classes';
+    const res = await request<ApiResponse<FacultyTimetableEntryDto[]>>(url, {
+      method: 'GET',
+    });
+    return res.data;
+  },
+
   async getStudentsForClass(sectionId: string): Promise<StudentDto[]> {
     const res = await request<ApiResponse<StudentDto[]>>(
       `/api/v1/faculty/classes/${sectionId}/students`,

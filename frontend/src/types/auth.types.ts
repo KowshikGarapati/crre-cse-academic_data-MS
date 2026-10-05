@@ -124,6 +124,7 @@ export interface TimetableEntryDto {
   periodNumber: number;
   startTime: string;
   endTime: string;
+  roomNumber?: string;
 }
 
 export interface CreateUserRequest {
@@ -197,6 +198,7 @@ export interface FacultyTimetableEntryDto {
   subjectName: string;
   sectionName: string;
   semesterName: string;
+  programName?: string;
   roomNumber?: string;
 }
 
@@ -292,6 +294,67 @@ export interface StudentFullProfileDto {
   classTeacherName?: string;
   counsellorName?: string;
   educationalHistory: EducationalHistoryDto[];
+}
+
+export interface StudentPlacementDto {
+  departmentId?: string;
+  departmentName?: string;
+  programId?: string;
+  programName?: string;
+  degree?: string;
+  academicYearId?: string;
+  academicYearName?: string;
+  yearNumber?: number;
+  semesterId?: string;
+  semesterName?: string;
+  semesterNumber?: number;
+  sectionId?: string;
+  sectionName?: string;
+}
+
+export interface StudentCourseRegistrationDto {
+  id: string;
+  code: string;
+  name: string;
+  type: string;
+  credits: number;
+  facultyName?: string;
+  facultyEmail?: string;
+}
+
+export interface StudentCounsellingSessionDto {
+  id: string;
+  meetingDate: string;
+  recordType: string;
+  remarks: string;
+  actionPlan?: string;
+  followUpDate?: string;
+  status: string;
+}
+
+export interface StudentDetailDto {
+  id: string;
+  userId?: string;
+  registrationNumber: string;
+  fullName: string;
+  email?: string;
+  uniqueId?: string;
+  aadharNumber?: number;
+  apaarNumber?: number;
+  entryType: string;
+  status: string;
+  placement?: StudentPlacementDto;
+  classTeacherName?: string;
+  classTeacherEmail?: string;
+  counsellorName?: string;
+  counsellorEmail?: string;
+  educationalHistory: EducationalHistoryDto[];
+  currentCourses: StudentCourseRegistrationDto[];
+  timetable: TimetableEntryDto[];
+  canViewCounselling: boolean;
+  counsellingRecords: StudentCounsellingSessionDto[];
+  attendanceStatus?: string;
+  resultsStatus?: string;
 }
 
 // ==================== HOD DTOS ====================

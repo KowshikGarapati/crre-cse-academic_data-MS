@@ -47,6 +47,15 @@ public class FacultyController {
         return ResponseEntity.ok(ApiResponse.success("Faculty timetable retrieved", list));
     }
 
+    @GetMapping("/today-classes")
+    public ResponseEntity<ApiResponse<List<FacultyTimetableEntryDto>>> getTodayClasses(
+        @RequestParam(required = false) String day,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<FacultyTimetableEntryDto> list = facultyService.getTodayClasses(day, caller);
+        return ResponseEntity.ok(ApiResponse.success("Today's classes retrieved", list));
+    }
+
     @GetMapping("/classes/{sectionId}/students")
     public ResponseEntity<ApiResponse<List<StudentDto>>> getStudentsForClass(
         @PathVariable UUID sectionId,

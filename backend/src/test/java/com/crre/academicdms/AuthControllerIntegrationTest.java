@@ -497,5 +497,157 @@ class AuthControllerIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.username").value(username))
             .andExpect(jsonPath("$.data.role").value("FACULTY"));
+
+        // Now attempt to log in with this newly created faculty user!
+        LoginRequest facultyLogin = new LoginRequest(username, "Faculty@123");
+        MvcResult facLoginRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(facultyLogin)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.user.username").value(username))
+            .andExpect(jsonPath("$.data.user.role").value("FACULTY"))
+            .andReturn();
+
+        MockHttpSession facSession = (MockHttpSession) facLoginRes.getRequest().getSession(false);
+        assertThat(facSession).isNotNull();
+
+        mockMvc.perform(get("/api/v1/auth/me").session(facSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.username").value(username))
+            .andExpect(jsonPath("$.data.role").value("FACULTY"));
+    }
+
+    @Test
+    @DisplayName("TEST K - Authentication: Wrong password returns 401 Unauthorized")
+    void testK_wrongPasswordReturnsUnauthorized() throws Exception {
+        LoginRequest wrongPass = new LoginRequest("hod.cse", "WrongPassword999!");
+        mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(wrongPass)))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("TEST L - Student Details: Scoped access control, timetable & courses display, and strict counselling confidentiality")
+    void testL_studentDetailsAccessControlAndConfidentiality() throws Exception {
+        UUID studentUserId = UUID.fromString("00000000-0000-0000-0000-000000000020");
+
+        // 1. HOD CSE: Can access student and view counselling
+        LoginRequest hodLogin = new LoginRequest("hod.cse", "Admin@123");
+        MvcResult hodRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(hodLogin)))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession hodSession = (MockHttpSession) hodRes.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/students/" + studentUserId).session(hodSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.registrationNumber").value("25B81A4201"))
+            .andExpect(jsonPath("$.data.fullName").value("AKHIL SHARIFF"))
+            .andExpect(jsonPath("$.data.placement.departmentName").value("Computer Science and Engineering"))
+            .andExpect(jsonPath("$.data.canViewCounselling").value(true));
+
+        // 2. Assigned Counsellor: Can access and view counselling
+        LoginRequest counsellorLogin = new LoginRequest("counsellor.cse", "Faculty@123");
+        MvcResult counsRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(counsellorLogin)))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession counsSession = (MockHttpSession) counsRes.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/students/" + studentUserId).session(counsSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.registrationNumber").value("25B81A4201"))
+            .andExpect(jsonPath("$.data.canViewCounselling").value(true));
+
+        // 3. Teaching Faculty (Rajesh Kumar teaches CS304/305 to Section 1):
+        // Can access student, registered courses and timetable, BUT canViewCounselling MUST BE FALSE!
+        LoginRequest facLogin = new LoginRequest("faculty.cse", "Faculty@123");
+        MvcResult facRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(facLogin)))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession facSession = (MockHttpSession) facRes.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/students/" + studentUserId).session(facSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.registrationNumber").value("25B81A4201"))
+            .andExpect(jsonPath("$.data.canViewCounselling").value(false))
+            .andExpect(jsonPath("$.data.counsellingRecords").isEmpty())
+            .andExpect(jsonPath("$.data.currentCourses").isArray())
+            .andExpect(jsonPath("$.data.currentCourses[0].name").exists())
+            .andExpect(jsonPath("$.data.timetable").isArray());
+
+        // 4. Other Student: Forbidden from accessing someone else's details
+        LoginRequest otherStudentLogin = new LoginRequest("22b91a0501", "Student@123");
+        MvcResult studentRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(otherStudentLogin)))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession otherStudentSession = (MockHttpSession) studentRes.getRequest().getSession(false);
+
+        mockMvc.perform(get("/api/v1/students/" + studentUserId).session(otherStudentSession))
+            .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("TEST M - Faculty Schedule: Today classes and chronological timetable ordering")
+    void testM_facultyTodayClassesAndTimetableOrdering() throws Exception {
+        LoginRequest facLogin = new LoginRequest("faculty.cse", "Faculty@123");
+        MvcResult facRes = mockMvc.perform(post("/api/v1/auth/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(facLogin)))
+            .andExpect(status().isOk())
+            .andReturn();
+        MockHttpSession facSession = (MockHttpSession) facRes.getRequest().getSession(false);
+
+        // Monday classes for faculty.cse (CS304 P2 10:20, CS305 P3 11:30, CS307L P5 14:10, CS307L P6 15:00)
+        mockMvc.perform(get("/api/v1/faculty/today-classes?day=MONDAY").session(facSession))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data").isArray())
+            .andExpect(jsonPath("$.data[0].dayOfWeek").value("MONDAY"))
+            .andExpect(jsonPath("$.data[0].periodNumber").value(2))
+            .andExpect(jsonPath("$.data[0].roomNumber").value("LH-301"))
+            .andExpect(jsonPath("$.data[0].subjectCode").value("CS304"))
+            .andExpect(jsonPath("$.data[0].programName").value("Artificial Intelligence & Machine Learning"))
+            .andExpect(jsonPath("$.data[1].periodNumber").value(3))
+            .andExpect(jsonPath("$.data[1].subjectCode").value("CS305"));
+
+        // Full timetable: ensure chronological day order (Monday -> Tuesday -> Wednesday -> etc.)
+        MvcResult ttRes = mockMvc.perform(get("/api/v1/faculty/my-timetable").session(facSession))
+            .andExpect(status().isOk())
+            .andReturn();
+
+        String ttJson = ttRes.getResponse().getContentAsString();
+        var rootNode = objectMapper.readTree(ttJson).path("data");
+        assertThat(rootNode.isArray()).isTrue();
+        assertThat(rootNode.size()).isGreaterThan(0);
+
+        java.util.Map<String, Integer> dayWeights = java.util.Map.of(
+            "MONDAY", 1, "TUESDAY", 2, "WEDNESDAY", 3, "THURSDAY", 4, "FRIDAY", 5, "SATURDAY", 6, "SUNDAY", 7
+        );
+
+        int prevDayWeight = 0;
+        java.time.LocalTime prevStartTime = java.time.LocalTime.MIN;
+
+        for (var entry : rootNode) {
+            String day = entry.path("dayOfWeek").asText().toUpperCase();
+            int currentDayWeight = dayWeights.getOrDefault(day, 99);
+            java.time.LocalTime currentStartTime = java.time.LocalTime.parse(entry.path("startTime").asText());
+
+            if (currentDayWeight > prevDayWeight) {
+                prevDayWeight = currentDayWeight;
+                prevStartTime = currentStartTime;
+            } else if (currentDayWeight == prevDayWeight) {
+                assertThat(currentStartTime).isAfterOrEqualTo(prevStartTime);
+                prevStartTime = currentStartTime;
+            } else {
+                org.junit.jupiter.api.Assertions.fail("Timetable day order is not chronological! Found " + day + " after weight " + prevDayWeight);
+            }
+        }
     }
 }

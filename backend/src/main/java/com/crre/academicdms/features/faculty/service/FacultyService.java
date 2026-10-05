@@ -112,23 +112,56 @@ public class FacultyService {
     public List<FacultyTimetableEntryDto> getMyTimetable(UserPrincipal caller) {
         List<TimetableEntry> entries = timetableRepository.findAll().stream()
             .filter(e -> e.getFacultyUser() != null && e.getFacultyUser().getId().equals(caller.getId()))
-            .sorted(Comparator.comparing(TimetableEntry::getDayOfWeek).thenComparingInt(TimetableEntry::getPeriodNumber))
+            .sorted(com.crre.academicdms.features.academic.util.TimetableUtils.CHRONOLOGICAL_COMPARATOR)
             .toList();
 
         return entries.stream()
-            .map(e -> new FacultyTimetableEntryDto(
-                e.getId(),
-                e.getDayOfWeek(),
-                e.getPeriodNumber(),
-                e.getStartTime(),
-                e.getEndTime(),
-                e.getSubject().getCode(),
-                e.getSubject().getName(),
-                e.getSection().getSectionName(),
-                e.getSection().getSemester().getTermName(),
-                e.getRoomNumber() != null ? e.getRoomNumber() : "LH-301"
-            ))
+            .map(this::mapToFacultyTimetableEntryDto)
             .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<FacultyTimetableEntryDto> getTodayClasses(String targetDay, UserPrincipal caller) {
+        String day = (targetDay != null && !targetDay.trim().isEmpty())
+            ? targetDay.trim().toUpperCase()
+            : java.time.LocalDate.now().getDayOfWeek().name();
+
+        List<TimetableEntry> entries = timetableRepository.findAll().stream()
+            .filter(e -> e.getFacultyUser() != null && e.getFacultyUser().getId().equals(caller.getId()))
+            .filter(e -> e.getDayOfWeek() != null && e.getDayOfWeek().trim().equalsIgnoreCase(day))
+            .sorted(Comparator.comparing((TimetableEntry e) -> e.getStartTime() != null ? e.getStartTime() : java.time.LocalTime.MIN)
+                .thenComparingInt(TimetableEntry::getPeriodNumber))
+            .toList();
+
+        return entries.stream()
+            .map(this::mapToFacultyTimetableEntryDto)
+            .toList();
+    }
+
+    private FacultyTimetableEntryDto mapToFacultyTimetableEntryDto(TimetableEntry e) {
+        String programName = (e.getSection() != null && e.getSection().getSemester() != null && e.getSection().getSemester().getProgram() != null)
+            ? e.getSection().getSemester().getProgram().getName()
+            : "B.Tech CSE";
+        String termName = (e.getSection() != null && e.getSection().getSemester() != null)
+            ? e.getSection().getSemester().getTermName()
+            : "Semester 3";
+        String sectionName = e.getSection() != null ? e.getSection().getSectionName() : "Section 1";
+        String subjectCode = e.getSubject() != null ? e.getSubject().getCode() : "";
+        String subjectName = e.getSubject() != null ? e.getSubject().getName() : "";
+
+        return new FacultyTimetableEntryDto(
+            e.getId(),
+            e.getDayOfWeek() != null ? e.getDayOfWeek().toUpperCase() : "MONDAY",
+            e.getPeriodNumber(),
+            e.getStartTime(),
+            e.getEndTime(),
+            subjectCode,
+            subjectName,
+            sectionName,
+            programName,
+            termName,
+            e.getRoomNumber() != null ? e.getRoomNumber() : "LH-301"
+        );
     }
 
     @Transactional(readOnly = true)

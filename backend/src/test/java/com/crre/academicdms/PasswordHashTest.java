@@ -22,7 +22,6 @@ class PasswordHashTest {
         System.out.println("ADMIN_HASH=" + adminHash);
         System.out.println("STUDENT_HASH=" + studentHash);
         System.out.println("FACULTY_HASH=" + facultyHash);
-
         assertTrue(encoder.matches(adminPass, adminHash));
         assertTrue(encoder.matches(studentPass, studentHash));
         assertTrue(encoder.matches(facultyPass, facultyHash));

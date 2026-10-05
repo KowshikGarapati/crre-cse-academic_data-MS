@@ -13,6 +13,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertTriangle,
+  ChevronRight,
 } from 'lucide-react';
 
 export const StudentsPage: React.FC = () => {
@@ -231,18 +232,24 @@ export const StudentsPage: React.FC = () => {
                     <th className="py-3 px-4">Section</th>
                     <th className="py-3 px-4">Admission Type</th>
                     <th className="py-3 px-4 text-center">Enrollment Status</th>
+                    <th className="py-3 px-3 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {filteredStudents.map((s, index) => (
-                    <tr key={s.id} className="hover:bg-slate-50 transition-colors">
+                    <tr
+                      key={s.id}
+                      onClick={() => navigate(`/students/${s.id}`)}
+                      className="hover:bg-indigo-50/70 transition-colors cursor-pointer group"
+                      title="Click to view academic details"
+                    >
                       <td className="py-3 px-4 text-center text-slate-400 font-mono">
                         {index + 1}
                       </td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900 group-hover:text-indigo-700">
                         {s.registrationNumber}
                       </td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">
+                      <td className="py-3 px-4 font-semibold text-slate-800 group-hover:text-indigo-900">
                         {s.fullName}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
@@ -264,6 +271,11 @@ export const StudentsPage: React.FC = () => {
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                           {s.status || 'ENROLLED'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right">
+                        <span className="inline-flex items-center text-slate-400 group-hover:text-indigo-600 font-semibold text-[11px] gap-0.5">
+                          View <ChevronRight className="w-3.5 h-3.5" />
                         </span>
                       </td>
                     </tr>

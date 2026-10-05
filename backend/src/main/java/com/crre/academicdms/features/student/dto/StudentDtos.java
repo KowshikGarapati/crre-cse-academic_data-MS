@@ -74,4 +74,39 @@ public class StudentDtos {
         LocalDate followUpDate,
         String status
     ) {}
+
+    public record StudentCourseRegistrationDto(
+        UUID id,
+        String code,
+        String name,
+        String type,
+        BigDecimal credits,
+        String facultyName,
+        String facultyEmail
+    ) {}
+
+    public record StudentDetailDto(
+        UUID id,
+        UUID userId,
+        String registrationNumber,
+        String fullName,
+        String email,
+        String uniqueId,
+        Long aadharNumber,
+        Long apaarNumber,
+        String entryType,
+        String status,
+        StudentPlacementDto placement,
+        String classTeacherName,
+        String classTeacherEmail,
+        String counsellorName,
+        String counsellorEmail,
+        List<EducationalHistoryDto> educationalHistory,
+        List<StudentCourseRegistrationDto> currentCourses,
+        List<TimetableEntryDto> timetable,
+        boolean canViewCounselling,
+        List<StudentCounsellingSessionDto> counsellingRecords,
+        String attendanceStatus,
+        String resultsStatus
+    ) {}
 }

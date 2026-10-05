@@ -56,6 +56,7 @@ public class FacultyDtos {
         String subjectCode,
         String subjectName,
         String sectionName,
+        String programName,
         String semesterName,
         String roomNumber
     ) {}

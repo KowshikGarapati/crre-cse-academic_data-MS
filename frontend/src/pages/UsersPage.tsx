@@ -24,6 +24,8 @@ import {
   Loader2,
   X,
   Briefcase,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
@@ -37,6 +39,9 @@ export const UsersPage: React.FC = () => {
   // Add User Modal State
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [activeAddTab, setActiveAddTab] = useState<'STUDENT' | 'FACULTY' | 'OTHER'>('STUDENT');
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [showFacultyPassword, setShowFacultyPassword] = useState(false);
+  const [showOtherPassword, setShowOtherPassword] = useState(false);
 
   // Student specific form with Educational History
   const [studentForm, setStudentForm] = useState({
@@ -169,8 +174,15 @@ export const UsersPage: React.FC = () => {
 
   const handleCreateStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!studentForm.fullName || !studentForm.username || !studentForm.email || !studentForm.registrationNumber) {
-      setAddError('Please fill in all required student details');
+    const fullName = studentForm.fullName.trim();
+    const username = studentForm.username.trim();
+    const email = studentForm.email.trim();
+    const password = studentForm.password.trim();
+    const regNo = studentForm.registrationNumber.trim();
+    const uniqueId = studentForm.uniqueId.trim() || ('CRRE' + regNo);
+
+    if (!fullName || !username || !email || !password || !regNo) {
+      setAddError('Please fill in all required student details and provide a password');
       return;
     }
     const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
@@ -181,12 +193,12 @@ export const UsersPage: React.FC = () => {
     setIsSubmittingUser(true);
     try {
       const created = await userApi.createStudentUser({
-        fullName: studentForm.fullName,
-        username: studentForm.username,
-        email: studentForm.email,
-        password: studentForm.password,
-        registrationNumber: studentForm.registrationNumber,
-        uniqueId: studentForm.uniqueId || ('CRRE' + studentForm.registrationNumber),
+        fullName,
+        username,
+        email,
+        password,
+        registrationNumber: regNo,
+        uniqueId,
         entryType: studentForm.entryType,
         departmentId: cseDept!.id,
         programId: aimlProg!.id,
@@ -195,9 +207,9 @@ export const UsersPage: React.FC = () => {
         sectionId: sec1!.id,
         educationalHistory: studentForm.educationalHistory.map((h) => ({
           qualificationType: h.qualificationType,
-          boardOrUniversity: h.boardOrUniversity,
-          institutionName: h.institutionName,
-          hallTicketNumber: h.hallTicketNumber || undefined,
+          boardOrUniversity: h.boardOrUniversity.trim(),
+          institutionName: h.institutionName.trim(),
+          hallTicketNumber: h.hallTicketNumber?.trim() || undefined,
           completionYear: Number(h.completionYear),
           percentage: Number(h.percentage),
         })),
@@ -232,8 +244,14 @@ export const UsersPage: React.FC = () => {
 
   const handleCreateFaculty = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!facultyForm.fullName || !facultyForm.username || !facultyForm.email || !facultyForm.employeeNumber) {
-      setAddError('Please fill in all required faculty details');
+    const fullName = facultyForm.fullName.trim();
+    const username = facultyForm.username.trim();
+    const email = facultyForm.email.trim();
+    const password = facultyForm.password.trim();
+    const employeeNumber = facultyForm.employeeNumber.trim();
+
+    if (!fullName || !username || !email || !password || !employeeNumber) {
+      setAddError('Please fill in all required faculty details and provide a password');
       return;
     }
     const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
@@ -248,17 +266,17 @@ export const UsersPage: React.FC = () => {
     setIsSubmittingUser(true);
     try {
       const created = await userApi.createFacultyUser({
-        fullName: facultyForm.fullName,
-        username: facultyForm.username,
-        email: facultyForm.email,
-        password: facultyForm.password,
-        employeeNumber: facultyForm.employeeNumber,
+        fullName,
+        username,
+        email,
+        password,
+        employeeNumber,
         departmentId: cseDept!.id,
-        designation: facultyForm.designation,
-        qualification: facultyForm.qualification,
-        specialization: facultyForm.specialization,
-        professionalExperience: facultyForm.professionalExperience,
-        institutionalContact: facultyForm.institutionalContact,
+        designation: facultyForm.designation.trim(),
+        qualification: facultyForm.qualification?.trim(),
+        specialization: facultyForm.specialization?.trim(),
+        professionalExperience: facultyForm.professionalExperience?.trim(),
+        institutionalContact: facultyForm.institutionalContact?.trim(),
         teachingAssignments,
         classTeacherSectionId: facultyForm.classTeacher ? (facultyForm.sectionId || sec1?.id) : undefined,
         counsellor: facultyForm.counsellor,
@@ -290,7 +308,12 @@ export const UsersPage: React.FC = () => {
 
   const handleCreateOtherUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addForm.fullName || !addForm.username || !addForm.email || !addForm.password || !addForm.role) {
+    const fullName = addForm.fullName?.trim();
+    const username = addForm.username?.trim();
+    const email = addForm.email?.trim();
+    const password = addForm.password?.trim();
+
+    if (!fullName || !username || !email || !password || !addForm.role) {
       setAddError('Please fill in all required fields');
       return;
     }
@@ -298,7 +321,13 @@ export const UsersPage: React.FC = () => {
     setAddError(null);
     setIsSubmittingUser(true);
     try {
-      const created = await userApi.createUser(addForm as CreateUserRequest);
+      const created = await userApi.createUser({
+        ...addForm,
+        fullName,
+        username,
+        email,
+        password,
+      } as CreateUserRequest);
       setUsers((prev) => [created, ...prev]);
       setShowAddUserModal(false);
       setAddForm({ role: 'HOD', classTeacher: false });
@@ -695,14 +724,27 @@ export const UsersPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={studentForm.password}
-                      onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <label className="block font-semibold text-slate-700 mb-1">Initial Password *</label>
+                    <div className="relative">
+                      <input
+                        type={showStudentPassword ? 'text' : 'password'}
+                        required
+                        value={studentForm.password}
+                        onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                        className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStudentPassword(!showStudentPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showStudentPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showStudentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Default: <code className="font-mono font-bold text-slate-700">Student@123</code> (can be customized)
+                    </p>
                   </div>
                 </div>
 
@@ -961,14 +1003,27 @@ export const UsersPage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Password</label>
-                    <input
-                      type="password"
-                      required
-                      value={facultyForm.password}
-                      onChange={(e) => setFacultyForm({ ...facultyForm, password: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <label className="block font-semibold text-slate-700 mb-1">Initial Password *</label>
+                    <div className="relative">
+                      <input
+                        type={showFacultyPassword ? 'text' : 'password'}
+                        required
+                        value={facultyForm.password}
+                        onChange={(e) => setFacultyForm({ ...facultyForm, password: e.target.value })}
+                        className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowFacultyPassword(!showFacultyPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showFacultyPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showFacultyPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Default: <code className="font-mono font-bold text-slate-700">Faculty@123</code> (can be customized)
+                    </p>
                   </div>
                 </div>
 
@@ -1170,14 +1225,27 @@ export const UsersPage: React.FC = () => {
 
                   <div>
                     <label className="block font-semibold text-slate-700 mb-1">Password *</label>
-                    <input
-                      type="password"
-                      required
-                      placeholder="••••••••"
-                      value={addForm.password || ''}
-                      onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showOtherPassword ? 'text' : 'password'}
+                        required
+                        placeholder="e.g. Admin@123"
+                        value={addForm.password || ''}
+                        onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
+                        className="w-full pl-3 pr-10 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowOtherPassword(!showOtherPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showOtherPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showOtherPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Minimum 6 characters. Make sure to remember or note down.
+                    </p>
                   </div>
                 </div>
 
