@@ -65,6 +65,14 @@ public class FacultyController {
         return ResponseEntity.ok(ApiResponse.success("Section students retrieved", list));
     }
 
+    @GetMapping("/my-students/grouped")
+    public ResponseEntity<ApiResponse<List<SectionStudentsGroupDto>>> getMyStudentsGrouped(
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<SectionStudentsGroupDto> list = facultyService.getMyStudentsGrouped(caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty students grouped by section", list));
+    }
+
     @GetMapping("/my-section/overview")
     public ResponseEntity<ApiResponse<MySectionOverviewDto>> getMySectionOverview(
         @AuthenticationPrincipal UserPrincipal caller
@@ -104,5 +112,13 @@ public class FacultyController {
     ) {
         CounsellingRecordDto created = facultyService.createCounsellingRecord(req, caller);
         return ResponseEntity.ok(ApiResponse.success("Counselling record created", created));
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<FacultyProfileDto>> getProfile(
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        FacultyProfileDto profile = facultyService.getMyProfile(caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty profile retrieved", profile));
     }
 }

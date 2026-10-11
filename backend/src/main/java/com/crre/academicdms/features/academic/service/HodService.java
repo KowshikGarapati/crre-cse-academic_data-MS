@@ -49,9 +49,20 @@ public class HodService {
     @Transactional(readOnly = true)
     public DepartmentAcademicStructureDto getMyDepartmentStructure(UserPrincipal caller) {
         Department dept = resolveHodDepartment(caller);
+        return getDepartmentStructure(dept);
+    }
 
+    @Transactional(readOnly = true)
+    public DepartmentAcademicStructureDto getDepartmentStructureById(UUID deptId) {
+        Department dept = departmentRepository.findById(deptId)
+            .orElseThrow(() -> new IllegalArgumentException("Department not found: " + deptId));
+        return getDepartmentStructure(dept);
+    }
+
+    @Transactional(readOnly = true)
+    public DepartmentAcademicStructureDto getDepartmentStructure(Department dept) {
         // Find HOD name
-        String hodName = caller.getFullName();
+        String hodName = "Unassigned";
         List<Responsibility> hodResps = responsibilityRepository.findByTypeAndStatus(
             "HOD_DEPT", "ACTIVE"
         );
@@ -90,6 +101,7 @@ public class HodService {
                         String classTeacher = findClassTeacherName(sec.getId());
                         return new HodSectionSummaryDto(
                             sec.getId(),
+                            sec.getId(),
                             sec.getSectionNumber(),
                             sec.getSectionName(),
                             studentCount,
@@ -100,13 +112,11 @@ public class HodService {
                     .toList();
 
                 semsByAy.computeIfAbsent(ay.getId(), k -> new ArrayList<>()).add(
-                    new HodSemesterSummaryDto(sem.getId(), sem.getSemesterNumber(), sem.getTermName(), secDtos)
+                    new HodSemesterSummaryDto(sem.getId(), sem.getId(), sem.getSemesterNumber(), sem.getTermName(), secDtos)
                 );
             }
 
             for (Map.Entry<UUID, List<HodSemesterSummaryDto>> entry : semsByAy.entrySet()) {
-                AcademicYear ay = programs.get(0).getDepartment().getInstitution() != null 
-                    ? null : null; // fetch from semester
                 Semester semSample = entry.getValue().isEmpty() ? null : allSections.stream()
                     .map(Section::getSemester)
                     .filter(s -> s.getAcademicYear().getId().equals(entry.getKey()))
@@ -116,7 +126,10 @@ public class HodService {
                     AcademicYear yearObj = semSample.getAcademicYear();
                     HodProgramHierarchyDto progHierarchy = new HodProgramHierarchyDto(
                         prog.getId(),
+                        prog.getId(),
                         prog.getCode(),
+                        prog.getCode(),
+                        prog.getName(),
                         prog.getName(),
                         prog.getDegree(),
                         entry.getValue().stream().sorted(Comparator.comparingInt(HodSemesterSummaryDto::semesterNumber)).toList()
@@ -124,8 +137,10 @@ public class HodService {
 
                     ayMap.computeIfAbsent(yearObj.getId(), k -> new HodAcademicYearHierarchyDto(
                         yearObj.getId(),
+                        yearObj.getId(),
                         yearObj.getYearName(),
                         yearObj.getYearNumber(),
+                        yearObj.isCurrent(),
                         yearObj.isCurrent(),
                         new ArrayList<>()
                     )).programs().add(progHierarchy);
@@ -198,11 +213,23 @@ public class HodService {
             })
             .toList();
 
+        long totalFaculty = facultyDtos.size();
+        long totalStudents = studentEnrollmentRepository.findAll().stream()
+            .filter(e -> e.getSection() != null
+                && e.getSection().getSemester() != null
+                && e.getSection().getSemester().getProgram() != null
+                && dept.getId().equals(e.getSection().getSemester().getProgram().getDepartment().getId()))
+            .map(e -> e.getStudent().getId())
+            .distinct()
+            .count();
+
         return new DepartmentAcademicStructureDto(
             dept.getId(),
             dept.getCode(),
             dept.getName(),
             hodName,
+            totalFaculty,
+            totalStudents,
             new ArrayList<>(ayMap.values()),
             facultyDtos,
             subjectDtos
@@ -216,7 +243,7 @@ public class HodService {
                 .orElseGet(() -> departmentRepository.findAll().get(0));
         }
 
-        if (caller.getRole() != Role.HOD) {
+        if (!caller.isHod()) {
             throw new AccessDeniedException("Access denied: Caller is not a Department Head (HOD)");
         }
 

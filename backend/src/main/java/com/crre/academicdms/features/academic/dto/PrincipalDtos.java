@@ -6,15 +6,26 @@ import java.util.UUID;
 
 public class PrincipalDtos {
 
+    public record PrincipalProgramDto(
+        UUID id,
+        UUID programId,
+        String code,
+        String name,
+        String degree,
+        long studentCount
+    ) {}
+
     public record CollegeDepartmentSummaryDto(
         UUID id,
+        UUID departmentId,
         String code,
         String name,
         String hodName,
         int programCount,
         long facultyCount,
         long studentCount,
-        List<String> programNames
+        List<String> programNames,
+        List<PrincipalProgramDto> programs
     ) {}
 
     public record CollegeOverviewDto(

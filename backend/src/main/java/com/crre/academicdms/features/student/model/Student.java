@@ -29,6 +29,12 @@ public class Student {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE"; // ACTIVE, INACTIVE
 
+    @Column(name = "admission_category", length = 30)
+    private String admissionCategory;
+
+    @Column(name = "tuition_category", length = 30)
+    private String tuitionCategory;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -56,6 +62,10 @@ public class Student {
     public void setEntryType(String entryType) { this.entryType = entryType; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public String getAdmissionCategory() { return admissionCategory; }
+    public void setAdmissionCategory(String admissionCategory) { this.admissionCategory = admissionCategory; }
+    public String getTuitionCategory() { return tuitionCategory; }
+    public void setTuitionCategory(String tuitionCategory) { this.tuitionCategory = tuitionCategory; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

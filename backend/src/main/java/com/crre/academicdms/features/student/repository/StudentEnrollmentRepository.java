@@ -14,4 +14,6 @@ public interface StudentEnrollmentRepository extends JpaRepository<StudentEnroll
     Optional<StudentEnrollment> findByStudentIdAndCurrentTrue(UUID studentId);
     List<StudentEnrollment> findBySectionId(UUID sectionId);
     List<StudentEnrollment> findByStudentId(UUID studentId);
+    List<StudentEnrollment> findBySectionIdInAndCurrentTrue(List<UUID> sectionIds);
+    List<StudentEnrollment> findByStudentIdInAndCurrentTrue(List<UUID> studentIds);
 }

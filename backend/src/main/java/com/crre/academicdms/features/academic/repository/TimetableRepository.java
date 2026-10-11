@@ -11,4 +11,8 @@ import java.util.UUID;
 public interface TimetableRepository extends JpaRepository<TimetableEntry, UUID> {
     List<TimetableEntry> findBySectionIdOrderByDayOfWeekAscPeriodNumberAsc(UUID sectionId);
     List<TimetableEntry> findByFacultyUserIdOrderByDayOfWeekAscPeriodNumberAsc(UUID facultyUserId);
+    boolean existsByFacultyUserIdAndDayOfWeekAndPeriodNumber(UUID facultyUserId, String dayOfWeek, int periodNumber);
+    boolean existsBySectionIdAndDayOfWeekAndPeriodNumber(UUID sectionId, String dayOfWeek, int periodNumber);
+    java.util.Optional<TimetableEntry> findByFacultyUserIdAndDayOfWeekAndPeriodNumber(UUID facultyUserId, String dayOfWeek, int periodNumber);
+    java.util.Optional<TimetableEntry> findBySectionIdAndDayOfWeekAndPeriodNumber(UUID sectionId, String dayOfWeek, int periodNumber);
 }

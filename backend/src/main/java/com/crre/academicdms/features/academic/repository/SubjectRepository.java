@@ -10,7 +10,9 @@ import java.util.UUID;
 
 @Repository
 public interface SubjectRepository extends JpaRepository<Subject, UUID> {
-    Optional<Subject> findByCode(String code);
+    List<Subject> findByCode(String code);
+    Optional<Subject> findByProgramIdAndCode(UUID programId, String code);
     List<Subject> findBySemesterId(UUID semesterId);
     List<Subject> findByProgramId(UUID programId);
+    List<Subject> findByProgramIdAndSemesterId(UUID programId, UUID semesterId);
 }

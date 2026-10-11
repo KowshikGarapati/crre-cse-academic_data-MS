@@ -39,6 +39,7 @@ public class StudentService {
     private final TimetableRepository timetableRepository;
     private final com.crre.academicdms.features.academic.repository.SubjectRepository subjectRepository;
     private final com.crre.academicdms.features.academic.service.HodService hodService;
+    private final StudentScopeService studentScopeService;
 
     public StudentService(
         StudentRepository studentRepository,
@@ -49,7 +50,8 @@ public class StudentService {
         CounsellingRecordRepository counsellingRecordRepository,
         TimetableRepository timetableRepository,
         com.crre.academicdms.features.academic.repository.SubjectRepository subjectRepository,
-        com.crre.academicdms.features.academic.service.HodService hodService
+        com.crre.academicdms.features.academic.service.HodService hodService,
+        StudentScopeService studentScopeService
     ) {
         this.studentRepository = studentRepository;
         this.enrollmentRepository = enrollmentRepository;
@@ -60,6 +62,7 @@ public class StudentService {
         this.timetableRepository = timetableRepository;
         this.subjectRepository = subjectRepository;
         this.hodService = hodService;
+        this.studentScopeService = studentScopeService;
     }
 
     @Transactional(readOnly = true)
@@ -146,6 +149,8 @@ public class StudentService {
             caller.getApaarNumber(),
             student.getEntryType(),
             student.getStatus(),
+            student.getAdmissionCategory(),
+            student.getTuitionCategory(),
             placement,
             classTeacherName,
             classTeacherEmail,
@@ -171,19 +176,7 @@ public class StudentService {
 
         return entries.stream()
             .sorted(com.crre.academicdms.features.academic.util.TimetableUtils.CHRONOLOGICAL_COMPARATOR)
-            .map(e -> new TimetableEntryDto(
-                e.getId(),
-                sec.getId(),
-                sec.getSectionName(),
-                e.getSubject().getId(),
-                e.getSubject().getCode(),
-                e.getSubject().getName(),
-                e.getFacultyUser() != null ? e.getFacultyUser().getFullName() : "Staff",
-                e.getDayOfWeek(),
-                e.getPeriodNumber(),
-                e.getStartTime().toString(),
-                e.getEndTime().toString()
-            ))
+            .map(com.crre.academicdms.features.academic.dto.AcademicDtos.TimetableEntryDto::fromEntity)
             .toList();
     }
 
@@ -222,71 +215,36 @@ public class StudentService {
     }
 
     @Transactional(readOnly = true)
-    public StudentDetailDto getStudentDetails(UUID studentIdOrUserId, UserPrincipal caller) {
+    public List<com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto> getScopedStudents(UserPrincipal caller) {
+        return studentScopeService.getAccessibleStudents(caller);
+    }
+
+    @Transactional(readOnly = true)
+    public List<com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto> getScopedStudents(UUID sectionId, UserPrincipal caller) {
+        return studentScopeService.getAccessibleStudents(sectionId, caller);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentDetailDto getStudentDetails(UUID studentId, UserPrincipal caller) {
+        return getStudentDetails(studentId.toString(), caller);
+    }
+
+    @Transactional(readOnly = true)
+    public StudentDetailDto getStudentDetails(String identifier, UserPrincipal caller) {
         if (caller == null) {
             throw new org.springframework.security.access.AccessDeniedException("Authentication required");
         }
 
-        // 1. Locate student by student.id, user.id, or registration number
-        Student student = studentRepository.findById(studentIdOrUserId)
-            .or(() -> studentRepository.findByUserId(studentIdOrUserId))
-            .or(() -> studentRepository.findByRegistrationNumber(studentIdOrUserId.toString()))
-            .orElseThrow(() -> new IllegalArgumentException("Student not found with identifier: " + studentIdOrUserId));
+        // 1. Authoritative resolution & scope verification via StudentScopeService
+        Student student = studentScopeService.resolveStudent(identifier);
+        if (!studentScopeService.isStudentAccessible(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to view this student");
+        }
+
+        boolean canViewCounselling = studentScopeService.canViewStudentCounselling(student, caller);
 
         List<StudentEnrollment> enrollments = enrollmentRepository.findByStudentId(student.getId());
         Section sec = enrollments.isEmpty() ? null : enrollments.get(0).getSection();
-
-        // 2. Authorize scope and confidentiality
-        boolean isAuthorized = false;
-        boolean canViewCounselling = false;
-
-        com.crre.academicdms.features.user.model.Role role = caller.getRole();
-        if (role == com.crre.academicdms.features.user.model.Role.ADMIN || role == com.crre.academicdms.features.user.model.Role.PRINCIPAL) {
-            isAuthorized = true;
-            canViewCounselling = true;
-        } else if (role == com.crre.academicdms.features.user.model.Role.HOD) {
-            com.crre.academicdms.features.academic.model.Department hodDept = hodService.resolveHodDepartment(caller);
-            UUID studentDeptId = (sec != null && sec.getSemester() != null && sec.getSemester().getProgram() != null && sec.getSemester().getProgram().getDepartment() != null)
-                ? sec.getSemester().getProgram().getDepartment().getId()
-                : null;
-            if (studentDeptId != null && studentDeptId.equals(hodDept.getId())) {
-                isAuthorized = true;
-                canViewCounselling = true;
-            } else {
-                throw new org.springframework.security.access.AccessDeniedException("HOD cannot view students outside their authorized department scope");
-            }
-        } else if (role == com.crre.academicdms.features.user.model.Role.FACULTY || role == com.crre.academicdms.features.user.model.Role.COUNSELLOR) {
-            boolean isAssignedCounsellor = counsellingAssignmentRepository.existsByCounsellorIdAndStudentIdAndStatus(
-                caller.getId(), student.getId(), "ACTIVE"
-            );
-            boolean isClassTeacher = sec != null && responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
-                caller.getId(), "CLASS_TEACHER", sec.getId(), "ACTIVE"
-            );
-            boolean isTeaching = sec != null && responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(
-                caller.getId(), "TEACHING", sec.getId(), "ACTIVE"
-            );
-
-            if (isAssignedCounsellor || isClassTeacher || isTeaching) {
-                isAuthorized = true;
-                // STRICT CONFIDENTIALITY: Only assigned counsellor can see counselling records/notes!
-                canViewCounselling = isAssignedCounsellor;
-            } else {
-                throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to view this student");
-            }
-        } else if (role == com.crre.academicdms.features.user.model.Role.STUDENT) {
-            boolean isOwn = (student.getUser() != null && student.getUser().getId().equals(caller.getId()))
-                || (student.getRegistrationNumber() != null && student.getRegistrationNumber().equalsIgnoreCase(caller.getUsername()));
-            if (isOwn) {
-                isAuthorized = true;
-                canViewCounselling = true;
-            } else {
-                throw new org.springframework.security.access.AccessDeniedException("Access denied: Students can only view their own profile");
-            }
-        }
-
-        if (!isAuthorized) {
-            throw new org.springframework.security.access.AccessDeniedException("Access denied: Not authorized to view student details");
-        }
 
         // 3. Academic Placement
         StudentPlacementDto placement = null;
@@ -383,19 +341,7 @@ public class StudentService {
         if (sec != null) {
             timetableDtos = timetableRepository.findBySectionIdOrderByDayOfWeekAscPeriodNumberAsc(sec.getId()).stream()
                 .sorted(com.crre.academicdms.features.academic.util.TimetableUtils.CHRONOLOGICAL_COMPARATOR)
-                .map(e -> new TimetableEntryDto(
-                    e.getId(),
-                    sec.getId(),
-                    sec.getSectionName(),
-                    e.getSubject().getId(),
-                    e.getSubject().getCode(),
-                    e.getSubject().getName(),
-                    e.getFacultyUser() != null ? e.getFacultyUser().getFullName() : "Staff",
-                    e.getDayOfWeek(),
-                    e.getPeriodNumber(),
-                    e.getStartTime().toString(),
-                    e.getEndTime().toString()
-                ))
+                .map(com.crre.academicdms.features.academic.dto.AcademicDtos.TimetableEntryDto::fromEntity)
                 .toList();
         }
 
@@ -433,6 +379,8 @@ public class StudentService {
             apaar,
             student.getEntryType(),
             student.getStatus(),
+            student.getAdmissionCategory(),
+            student.getTuitionCategory(),
             placement,
             classTeacherName,
             classTeacherEmail,

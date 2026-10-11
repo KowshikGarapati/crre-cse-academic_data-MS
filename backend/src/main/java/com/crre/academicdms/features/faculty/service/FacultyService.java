@@ -225,6 +225,63 @@ public class FacultyService {
     }
 
     @Transactional(readOnly = true)
+    public List<SectionStudentsGroupDto> getMyStudentsGrouped(UserPrincipal caller) {
+        List<Responsibility> teaching = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), "TEACHING", "ACTIVE"
+        );
+
+        List<SectionStudentsGroupDto> groups = new ArrayList<>();
+        Set<String> processedKeys = new HashSet<>();
+
+        for (Responsibility r : teaching) {
+            if (r.getSection() != null && r.getSubject() != null) {
+                Section sec = r.getSection();
+                Subject sub = r.getSubject();
+                String key = sec.getId() + "_" + sub.getId();
+                if (!processedKeys.add(key)) continue;
+
+                com.crre.academicdms.features.academic.model.Semester sem = sec.getSemester();
+                com.crre.academicdms.features.academic.model.Program prog = sem != null ? sem.getProgram() : null;
+
+                List<StudentEnrollment> enrollments = enrollmentRepository.findBySectionId(sec.getId());
+                List<StudentDto> students = enrollments.stream()
+                    .map(e -> {
+                        Student s = e.getStudent();
+                        return new StudentDto(
+                            s.getId(),
+                            s.getRegistrationNumber(),
+                            s.getFullName(),
+                            s.getEntryType(),
+                            s.getStatus(),
+                            sec.getId(),
+                            sec.getSectionName(),
+                            prog != null ? prog.getName() : "",
+                            sem != null ? sem.getTermName() : ""
+                        );
+                    })
+                    .sorted(Comparator.comparing(StudentDto::registrationNumber))
+                    .toList();
+
+                groups.add(new SectionStudentsGroupDto(
+                    sec.getId(),
+                    sec.getSectionName(),
+                    sub.getId(),
+                    sub.getCode(),
+                    sub.getName(),
+                    prog != null ? prog.getId() : null,
+                    prog != null ? prog.getCode() : "",
+                    prog != null ? prog.getName() : "",
+                    sem != null ? sem.getId() : null,
+                    sem != null ? sem.getTermName() : "",
+                    students.size(),
+                    students
+                ));
+            }
+        }
+        return groups;
+    }
+
+    @Transactional(readOnly = true)
     public List<CounsellingStudentDto> getMyCounsellingStudents(UserPrincipal caller) {
         List<CounsellingAssignment> assignments = counsellingAssignmentRepository.findByCounsellorIdAndStatus(
             caller.getId(), "ACTIVE"
@@ -338,8 +395,46 @@ public class FacultyService {
             .toList();
     }
 
+    @Transactional(readOnly = true)
+    public FacultyProfileDto getMyProfile(UserPrincipal caller) {
+        FacultyProfile fp = facultyProfileRepository.findByUserId(caller.getId())
+            .orElseThrow(() -> new IllegalArgumentException("Faculty profile not found for user: " + caller.getUsername()));
+
+        List<Responsibility> resps = responsibilityRepository.findByUserIdAndTypeAndStatus(
+            caller.getId(), null, "ACTIVE"
+        );
+        List<String> roleLabels = resps.stream()
+            .map(r -> {
+                if ("CLASS_TEACHER".equals(r.getType()) && r.getSection() != null) {
+                    return "Class Teacher (" + r.getSection().getSectionName() + ")";
+                } else if ("TEACHING".equals(r.getType()) && r.getSubject() != null) {
+                    return r.getSubject().getCode() + " (" + (r.getSection() != null ? r.getSection().getSectionName() : "") + ")";
+                } else {
+                    return r.getType().replace('_', ' ');
+                }
+            })
+            .toList();
+
+        return new FacultyProfileDto(
+            fp.getId(),
+            caller.getId(),
+            caller.getFullName(),
+            caller.getEmail(),
+            fp.getEmployeeNumber(),
+            fp.getDepartment() != null ? fp.getDepartment().getId() : null,
+            fp.getDepartment() != null ? fp.getDepartment().getName() : null,
+            fp.getDesignation(),
+            fp.getQualification(),
+            fp.getSpecialization(),
+            fp.getProfessionalExperience(),
+            fp.getInstitutionalContact(),
+            fp.isActiveStatus(),
+            roleLabels
+        );
+    }
+
     private boolean isHodOfSection(UserPrincipal caller, UUID sectionId) {
-        if (caller.getRole() != Role.HOD) return false;
+        if (!caller.isHod()) return false;
         Section sec = sectionRepository.findById(sectionId).orElse(null);
         if (sec == null) return false;
         UUID deptId = sec.getSemester().getProgram().getDepartment().getId();

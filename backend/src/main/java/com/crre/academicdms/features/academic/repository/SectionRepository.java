@@ -10,4 +10,11 @@ import java.util.UUID;
 @Repository
 public interface SectionRepository extends JpaRepository<Section, UUID> {
     List<Section> findBySemesterId(UUID semesterId);
+    java.util.Optional<Section> findBySemesterIdAndSectionNumber(UUID semesterId, int sectionNumber);
+
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT s FROM Section s
+        WHERE s.semester.program.department.id = :deptId
+    """)
+    List<Section> findByDepartmentId(@org.springframework.data.repository.query.Param("deptId") UUID deptId);
 }

@@ -95,7 +95,19 @@ public class PrincipalService {
                 hodName = h.get().getUser().getFullName();
             }
 
+            List<com.crre.academicdms.features.academic.dto.PrincipalDtos.PrincipalProgramDto> progDtos = progs.stream()
+                .map(p -> {
+                    long pStudCount = studentEnrollmentRepository.findAll().stream()
+                        .filter(e -> e.getSection().getSemester().getProgram().getId().equals(p.getId()))
+                        .count();
+                    return new com.crre.academicdms.features.academic.dto.PrincipalDtos.PrincipalProgramDto(
+                        p.getId(), p.getId(), p.getCode(), p.getName(), p.getDegree(), pStudCount
+                    );
+                })
+                .toList();
+
             deptDtos.add(new CollegeDepartmentSummaryDto(
+                dept.getId(),
                 dept.getId(),
                 dept.getCode(),
                 dept.getName(),
@@ -103,7 +115,8 @@ public class PrincipalService {
                 progs.size(),
                 facCount,
                 studCount,
-                progs.stream().map(Program::getName).toList()
+                progs.stream().map(Program::getName).toList(),
+                progDtos
             ));
         }
 
@@ -123,7 +136,7 @@ public class PrincipalService {
     @Transactional(readOnly = true)
     public DepartmentAcademicStructureDto getDepartmentDetails(UUID deptId, UserPrincipal caller) {
         enforcePrincipalOrAdmin(caller);
-        return hodService.getMyDepartmentStructure(caller);
+        return hodService.getDepartmentStructureById(deptId);
     }
 
     @Transactional(readOnly = true)

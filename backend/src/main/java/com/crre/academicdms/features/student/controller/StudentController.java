@@ -12,6 +12,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -51,9 +52,18 @@ public class StudentController {
         return ResponseEntity.ok(ApiResponse.success("Student counselling summary retrieved", summary));
     }
 
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto>>> getScopedStudents(
+        @RequestParam(required = false) UUID sectionId,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto> students = studentService.getScopedStudents(sectionId, caller);
+        return ResponseEntity.ok(ApiResponse.success("Scoped students retrieved successfully", students));
+    }
+
     @GetMapping("/{studentId}")
     public ResponseEntity<ApiResponse<StudentDetailDto>> getStudentDetails(
-        @PathVariable UUID studentId,
+        @PathVariable String studentId,
         @AuthenticationPrincipal UserPrincipal caller
     ) {
         StudentDetailDto details = studentService.getStudentDetails(studentId, caller);

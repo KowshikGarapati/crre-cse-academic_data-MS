@@ -45,6 +45,20 @@ public class AcademicController {
         return ResponseEntity.ok(ApiResponse.success("Section timetable retrieved successfully", timetable));
     }
 
+    @GetMapping("/academic/periods")
+    public ResponseEntity<ApiResponse<List<com.crre.academicdms.features.academic.dto.AcademicDtos.PeriodDefinitionDto>>> getAcademicPeriods() {
+        var periods = academicService.getAcademicPeriods();
+        return ResponseEntity.ok(ApiResponse.success("Canonical academic periods retrieved", periods));
+    }
+
+    @GetMapping("/sections/{sectionId}/overview")
+    public ResponseEntity<ApiResponse<com.crre.academicdms.features.academic.dto.AcademicDtos.SectionDetailOverviewDto>> getSectionOverview(
+        @PathVariable UUID sectionId
+    ) {
+        var overview = academicService.getSectionDetailOverview(sectionId);
+        return ResponseEntity.ok(ApiResponse.success("Section detailed overview retrieved successfully", overview));
+    }
+
     @GetMapping("/faculty/my-teaching")
     public ResponseEntity<ApiResponse<List<ResponsibilitySummaryDto>>> getMyTeachingAssignments(
         @AuthenticationPrincipal UserPrincipal caller

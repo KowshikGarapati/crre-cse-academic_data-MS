@@ -9,6 +9,7 @@ public class HodDtos {
 
     public record HodSectionSummaryDto(
         UUID id,
+        UUID sectionId,
         int sectionNumber,
         String sectionName,
         long studentCount,
@@ -17,6 +18,7 @@ public class HodDtos {
 
     public record HodSemesterSummaryDto(
         UUID id,
+        UUID semesterId,
         int semesterNumber,
         String termName,
         List<HodSectionSummaryDto> sections
@@ -24,17 +26,22 @@ public class HodDtos {
 
     public record HodProgramHierarchyDto(
         UUID id,
+        UUID programId,
         String code,
+        String programCode,
         String name,
+        String programName,
         String degree,
         List<HodSemesterSummaryDto> semesters
     ) {}
 
     public record HodAcademicYearHierarchyDto(
         UUID id,
+        UUID academicYearId,
         String yearName,
         int yearNumber,
         boolean current,
+        boolean isCurrent,
         List<HodProgramHierarchyDto> programs
     ) {}
 
@@ -55,6 +62,8 @@ public class HodDtos {
         String departmentCode,
         String departmentName,
         String hodName,
+        long totalFaculty,
+        long totalStudents,
         List<HodAcademicYearHierarchyDto> academicYears,
         List<FacultyProfileDto> faculty,
         List<HodSubjectSummaryDto> subjects

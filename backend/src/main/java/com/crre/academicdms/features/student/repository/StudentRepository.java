@@ -11,6 +11,8 @@ import java.util.UUID;
 @Repository
 public interface StudentRepository extends JpaRepository<Student, UUID> {
     Optional<Student> findByRegistrationNumber(String registrationNumber);
+    Optional<Student> findByRegistrationNumberIgnoreCase(String registrationNumber);
     Optional<Student> findByUserId(UUID userId);
     List<Student> findAllByOrderByRegistrationNumberAsc();
+    List<Student> findByIdInOrderByRegistrationNumberAsc(List<UUID> ids);
 }

@@ -108,4 +108,19 @@ public class FacultyDtos {
         LocalDate followUpDate,
         String status
     ) {}
+
+    public record SectionStudentsGroupDto(
+        UUID sectionId,
+        String sectionName,
+        UUID subjectId,
+        String subjectCode,
+        String subjectName,
+        UUID programId,
+        String programCode,
+        String programName,
+        UUID semesterId,
+        String semesterName,
+        int studentCount,
+        List<com.crre.academicdms.features.academic.dto.AcademicDtos.StudentDto> students
+    ) {}
 }
