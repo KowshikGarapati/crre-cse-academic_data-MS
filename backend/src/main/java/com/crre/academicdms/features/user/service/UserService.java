@@ -10,6 +10,8 @@ import com.crre.academicdms.features.faculty.model.FacultyProfile;
 import com.crre.academicdms.features.faculty.repository.FacultyProfileRepository;
 import com.crre.academicdms.features.responsibility.dto.ResponsibilityRequest;
 import com.crre.academicdms.features.responsibility.dto.ResponsibilitySummaryDto;
+import com.crre.academicdms.features.responsibility.model.Responsibility;
+import com.crre.academicdms.features.responsibility.repository.ResponsibilityRepository;
 import com.crre.academicdms.features.responsibility.service.ResponsibilityService;
 import com.crre.academicdms.features.student.model.Student;
 import com.crre.academicdms.features.student.model.StudentEducationalHistory;
@@ -37,6 +39,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final ResponsibilityService responsibilityService;
+    private final ResponsibilityRepository responsibilityRepository;
     private final PasswordEncoder passwordEncoder;
     private final HodService hodService;
     private final DepartmentRepository departmentRepository;
@@ -49,6 +52,7 @@ public class UserService {
     public UserService(
         UserRepository userRepository,
         ResponsibilityService responsibilityService,
+        ResponsibilityRepository responsibilityRepository,
         PasswordEncoder passwordEncoder,
         HodService hodService,
         DepartmentRepository departmentRepository,
@@ -60,6 +64,7 @@ public class UserService {
     ) {
         this.userRepository = userRepository;
         this.responsibilityService = responsibilityService;
+        this.responsibilityRepository = responsibilityRepository;
         this.passwordEncoder = passwordEncoder;
         this.hodService = hodService;
         this.departmentRepository = departmentRepository;
@@ -75,17 +80,31 @@ public class UserService {
         enforceAdminOrHod(caller);
 
         List<User> users;
-        if (caller.getRole() == Role.HOD) {
+        if (caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
-            // HOD sees users belonging to or assigned to their department
+            // HOD sees departmental personnel: must have a FacultyProfile in hodDept OR an active departmental responsibility
+            List<FacultyProfile> deptProfiles = facultyProfileRepository.findByDepartmentId(hodDept.getId());
+            java.util.Set<UUID> deptUserIds = deptProfiles.stream()
+                .map(fp -> fp.getUser().getId())
+                .collect(java.util.stream.Collectors.toSet());
+
+            List<Responsibility> deptResps = responsibilityRepository.findByDepartmentIdAndStatus(hodDept.getId(), "ACTIVE");
+            for (Responsibility r : deptResps) {
+                if (r.getUser() != null) {
+                    deptUserIds.add(r.getUser().getId());
+                }
+            }
+
+            // Exclude Role.STUDENT, Role.PRINCIPAL, Role.ADMIN and stray unlinked records
             users = userRepository.findAll().stream()
-                .filter(u -> {
-                    if (u.getRole() == Role.PRINCIPAL || u.getRole() == Role.ADMIN) return false;
-                    return true;
-                })
+                .filter(u -> deptUserIds.contains(u.getId()))
+                .filter(u -> u.getRole() != Role.STUDENT && u.getRole() != Role.PRINCIPAL && u.getRole() != Role.ADMIN)
                 .toList();
         } else {
-            users = userRepository.findAll();
+            // Institutional staff management (Faculty, HOD, Counsellor, Class Teacher, Admin, Principal) - students belong in directory
+            users = userRepository.findAll().stream()
+                .filter(u -> u.getRole() != Role.STUDENT)
+                .toList();
         }
 
         return users.stream()
@@ -101,7 +120,7 @@ public class UserService {
         enforceAdminOrHod(caller);
 
         // Validate scope
-        if (caller.getRole() == Role.HOD) {
+        if (caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
             if (!req.departmentId().equals(hodDept.getId())) {
                 throw new AccessDeniedException("HOD cannot create students outside their authorized department scope");
@@ -136,6 +155,7 @@ public class UserService {
         user.setAadharNumber(req.aadharNumber());
         user.setApaarNumber(req.apaarNumber());
         user.setEnabled(true);
+        user.setMustChangePassword(true);
         User savedUser = userRepository.save(user);
 
         // 2. Create Student
@@ -182,7 +202,7 @@ public class UserService {
         enforceAdminOrHod(caller);
 
         // Validate scope
-        if (caller.getRole() == Role.HOD) {
+        if (caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
             if (!req.departmentId().equals(hodDept.getId())) {
                 throw new AccessDeniedException("HOD cannot create faculty outside their authorized department scope");
@@ -217,6 +237,7 @@ public class UserService {
         );
         user.setUniqueId(req.employeeNumber().trim());
         user.setEnabled(true);
+        user.setMustChangePassword(true);
         User savedUser = userRepository.save(user);
 
         // 2. Create FacultyProfile (NO PROGRAM FIELD!)
@@ -290,6 +311,7 @@ public class UserService {
         user.setAadharNumber(req.aadharNumber());
         user.setApaarNumber(req.apaarNumber());
         user.setEnabled(true);
+        user.setMustChangePassword(true);
 
         User savedUser = userRepository.save(user);
 
@@ -350,6 +372,7 @@ public class UserService {
         user.setEnabled(req.enabled());
         if (req.password() != null && !req.password().trim().isEmpty()) {
             user.setPasswordHash(passwordEncoder.encode(req.password().trim()));
+            user.setMustChangePassword(false);
         }
 
         User saved = userRepository.save(user);
@@ -364,7 +387,7 @@ public class UserService {
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
 
-        if (caller.getRole() == Role.HOD && (user.getRole() == Role.PRINCIPAL || user.getRole() == Role.ADMIN)) {
+        if (caller.isHod() && (user.getRole() == Role.PRINCIPAL || user.getRole() == Role.ADMIN)) {
             throw new AccessDeniedException("HOD cannot modify a Principal or Admin account");
         }
 
@@ -377,14 +400,14 @@ public class UserService {
             throw new AccessDeniedException("Authentication required");
         }
         Role role = caller.getRole();
-        if (role != Role.ADMIN && role != Role.PRINCIPAL && role != Role.HOD) {
+        if (role != Role.ADMIN && role != Role.PRINCIPAL && !caller.isHod()) {
             throw new AccessDeniedException("Access denied: You do not have administrative authority");
         }
     }
 
     private void enforceDownwardAuthority(UserPrincipal caller, Role targetRole) {
         enforceAdminOrHod(caller);
-        if (caller.getRole() == Role.HOD) {
+        if (caller.isHod()) {
             if (targetRole == Role.PRINCIPAL || targetRole == Role.ADMIN) {
                 throw new AccessDeniedException("HOD cannot create or assign a Principal or Admin");
             }

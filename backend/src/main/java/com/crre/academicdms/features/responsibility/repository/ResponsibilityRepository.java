@@ -24,9 +24,17 @@ public interface ResponsibilityRepository extends JpaRepository<Responsibility, 
 
     List<Responsibility> findBySectionIdAndStatus(UUID sectionId, String status);
 
+    boolean existsByUserIdAndTypeAndStatus(UUID userId, String type, String status);
+
     boolean existsByUserIdAndTypeAndDepartmentIdAndStatus(UUID userId, String type, UUID departmentId, String status);
 
     boolean existsByUserIdAndTypeAndSectionIdAndStatus(UUID userId, String type, UUID sectionId, String status);
+
+    boolean existsBySectionIdAndTypeAndStatus(UUID sectionId, String type, String status);
+
+    java.util.Optional<Responsibility> findFirstBySectionIdAndTypeAndStatus(UUID sectionId, String type, String status);
+
+    java.util.Optional<Responsibility> findFirstByUserIdAndSubjectIdAndSectionIdAndTypeAndStatus(UUID userId, UUID subjectId, UUID sectionId, String type, String status);
 
     @Query("""
         SELECT COUNT(r) > 0 FROM Responsibility r

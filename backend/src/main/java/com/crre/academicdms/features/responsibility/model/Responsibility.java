@@ -33,6 +33,14 @@ public class Responsibility {
     private Program program;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "academic_year_id")
+    private com.crre.academicdms.features.academic.model.AcademicYear academicYear;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "semester_id")
+    private com.crre.academicdms.features.academic.model.Semester semester;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id")
     private Subject subject;
 
@@ -61,6 +69,33 @@ public class Responsibility {
         this.program = program;
         this.subject = subject;
         this.section = section;
+        if (section != null && section.getSemester() != null) {
+            this.semester = section.getSemester();
+            this.academicYear = section.getSemester().getAcademicYear();
+        }
+        this.status = "ACTIVE";
+        this.description = description;
+    }
+
+    public Responsibility(
+        User user,
+        String type,
+        Department department,
+        Program program,
+        com.crre.academicdms.features.academic.model.AcademicYear academicYear,
+        com.crre.academicdms.features.academic.model.Semester semester,
+        Subject subject,
+        Section section,
+        String description
+    ) {
+        this.user = user;
+        this.type = type;
+        this.department = department;
+        this.program = program;
+        this.academicYear = academicYear;
+        this.semester = semester;
+        this.subject = subject;
+        this.section = section;
         this.status = "ACTIVE";
         this.description = description;
     }
@@ -80,6 +115,10 @@ public class Responsibility {
     public void setDepartment(Department department) { this.department = department; }
     public Program getProgram() { return program; }
     public void setProgram(Program program) { this.program = program; }
+    public com.crre.academicdms.features.academic.model.AcademicYear getAcademicYear() { return academicYear; }
+    public void setAcademicYear(com.crre.academicdms.features.academic.model.AcademicYear academicYear) { this.academicYear = academicYear; }
+    public com.crre.academicdms.features.academic.model.Semester getSemester() { return semester; }
+    public void setSemester(com.crre.academicdms.features.academic.model.Semester semester) { this.semester = semester; }
     public Subject getSubject() { return subject; }
     public void setSubject(Subject subject) { this.subject = subject; }
     public Section getSection() { return section; }

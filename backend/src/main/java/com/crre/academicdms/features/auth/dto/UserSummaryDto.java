@@ -19,6 +19,7 @@ public record UserSummaryDto(
     Long aadharNumber,
     Long apaarNumber,
     boolean enabled,
+    boolean mustChangePassword,
     List<ResponsibilitySummaryDto> responsibilities
 ) {
     public static UserSummaryDto fromEntity(User user) {
@@ -37,6 +38,7 @@ public record UserSummaryDto(
             user.getAadharNumber(),
             user.getApaarNumber(),
             user.isEnabled(),
+            user.isMustChangePassword(),
             responsibilities != null ? responsibilities : Collections.emptyList()
         );
     }

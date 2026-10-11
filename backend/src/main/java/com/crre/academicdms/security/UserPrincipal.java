@@ -7,7 +7,9 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public class UserPrincipal implements UserDetails {
@@ -25,6 +27,7 @@ public class UserPrincipal implements UserDetails {
     private final boolean enabled;
     private final Collection<? extends GrantedAuthority> authorities;
     private final User user;
+    private final boolean hasActiveHodResponsibility;
 
     public UserPrincipal(
         UUID id,
@@ -41,6 +44,25 @@ public class UserPrincipal implements UserDetails {
         Collection<? extends GrantedAuthority> authorities,
         User user
     ) {
+        this(id, username, email, password, fullName, role, registrationNumber, uniqueId, aadharNumber, apaarNumber, enabled, authorities, user, role == Role.HOD);
+    }
+
+    public UserPrincipal(
+        UUID id,
+        String username,
+        String email,
+        String password,
+        String fullName,
+        Role role,
+        String registrationNumber,
+        String uniqueId,
+        Long aadharNumber,
+        Long apaarNumber,
+        boolean enabled,
+        Collection<? extends GrantedAuthority> authorities,
+        User user,
+        boolean hasActiveHodResponsibility
+    ) {
         this.id = id;
         this.username = username;
         this.email = email;
@@ -54,12 +76,19 @@ public class UserPrincipal implements UserDetails {
         this.enabled = enabled;
         this.authorities = authorities;
         this.user = user;
+        this.hasActiveHodResponsibility = hasActiveHodResponsibility;
     }
 
     public static UserPrincipal create(User user) {
-        List<GrantedAuthority> authorities = List.of(
-            new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
-        );
+        return create(user, user.getRole() == Role.HOD);
+    }
+
+    public static UserPrincipal create(User user, boolean hasActiveHodResponsibility) {
+        Set<GrantedAuthority> authorities = new LinkedHashSet<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        if (user.getRole() == Role.HOD || hasActiveHodResponsibility) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_HOD"));
+        }
 
         return new UserPrincipal(
             user.getId(),
@@ -73,9 +102,19 @@ public class UserPrincipal implements UserDetails {
             user.getAadharNumber(),
             user.getApaarNumber(),
             user.isEnabled(),
-            authorities,
-            user
+            List.copyOf(authorities),
+            user,
+            hasActiveHodResponsibility
         );
+    }
+
+    public boolean isHod() {
+        return this.role == Role.HOD || this.hasActiveHodResponsibility ||
+            (this.authorities != null && this.authorities.stream().anyMatch(a -> "ROLE_HOD".equals(a.getAuthority())));
+    }
+
+    public boolean hasActiveHodResponsibility() {
+        return hasActiveHodResponsibility;
     }
 
     public User getUser() {
