@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
 import { studentApi } from '../api/student.api';
@@ -18,7 +18,9 @@ import type {
   MySubjectDto,
   StudentFullProfileDto,
   SubjectDto,
+  TimetableEntryDto,
 } from '../types/auth.types';
+import { isUserHod } from '../types/auth.types';
 import {
   Building,
   GraduationCap,
@@ -34,6 +36,7 @@ import {
   PlusCircle,
   Loader2,
   ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -44,6 +47,7 @@ export const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [studentProfile, setStudentProfile] = useState<StudentFullProfileDto | null>(null);
   const [studentCounselling, setStudentCounselling] = useState<CounsellingRecordDto[]>([]);
+  const [studentTimetable, setStudentTimetable] = useState<TimetableEntryDto[]>([]);
 
   const [facultySubjects, setFacultySubjects] = useState<MySubjectDto[]>([]);
   const [facultyClasses, setFacultyClasses] = useState<MyClassDto[]>([]);
@@ -62,6 +66,10 @@ export const DashboardPage: React.FC = () => {
   const [hodSubjects, setHodSubjects] = useState<SubjectDto[]>([]);
 
   const [collegeOverview, setCollegeOverview] = useState<CollegeOverviewDto | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedDeptId = searchParams.get('dept');
+  const [selectedDeptHierarchy, setSelectedDeptHierarchy] = useState<DepartmentHierarchyDto | null>(null);
+  const [loadingDept, setLoadingDept] = useState(false);
 
   // New Counselling record modal state
   const [showRecordModal, setShowRecordModal] = useState(false);
@@ -79,12 +87,32 @@ export const DashboardPage: React.FC = () => {
       setLoading(true);
       try {
         if (user.role === 'STUDENT') {
-          const [prof, couns] = await Promise.all([
+          const [prof, counsSummary, tt] = await Promise.all([
             studentApi.getMyProfile().catch(() => null),
-            studentApi.getMyCounselling().catch(() => []),
+            studentApi.getMyCounselling().catch(() => null),
+            studentApi.getMyTimetable().catch(() => []),
           ]);
           setStudentProfile(prof);
-          setStudentCounselling(couns);
+          setStudentTimetable(tt);
+          if (counsSummary && counsSummary.sessions) {
+            const mapped: CounsellingRecordDto[] = counsSummary.sessions.map((s) => ({
+              id: s.id,
+              counsellorName: counsSummary.counsellorName || prof?.counsellorName || 'Assigned Counsellor',
+              studentId: prof?.id || '',
+              studentRegistrationNumber: prof?.registrationNumber || '',
+              studentName: prof?.fullName || '',
+              meetingDate: s.meetingDate,
+              recordType: s.recordType,
+              remarks: s.remarks,
+              actionPlan: s.actionPlan,
+              followUpDate: s.followUpDate,
+              status: s.status,
+              createdAt: s.meetingDate,
+            }));
+            setStudentCounselling(mapped);
+          } else {
+            setStudentCounselling([]);
+          }
         } else if (user.role === 'FACULTY') {
           const isCT = user.responsibilities?.some((r) => r.type === 'CLASS_TEACHER' && r.status === 'ACTIVE');
           const isCounsellor = user.responsibilities?.some((r) => r.type === 'COUNSELLOR' && r.status === 'ACTIVE');
@@ -115,6 +143,16 @@ export const DashboardPage: React.FC = () => {
               setSelectedMentee(cStudents[0].studentId);
             }
           }
+          if (isUserHod(user)) {
+            const [hier, fac, subs] = await Promise.all([
+              hodApi.getMyDepartmentHierarchy().catch(() => null),
+              hodApi.getDepartmentFaculty().catch(() => []),
+              hodApi.getDepartmentSubjects().catch(() => []),
+            ]);
+            setHodHierarchy(hier);
+            setHodFaculty(fac);
+            setHodSubjects(subs);
+          }
         } else if (user.role === 'HOD') {
           const [hier, fac, subs] = await Promise.all([
             hodApi.getMyDepartmentHierarchy().catch(() => null),
@@ -137,6 +175,22 @@ export const DashboardPage: React.FC = () => {
 
     loadDashboardData();
   }, [user]);
+
+  useEffect(() => {
+    if (user?.role === 'PRINCIPAL' && selectedDeptId) {
+      setLoadingDept(true);
+      principalApi
+        .getDepartmentDetails(selectedDeptId)
+        .then((data) => setSelectedDeptHierarchy(data))
+        .catch((err) => {
+          console.error('Failed to load department hierarchy for Principal', err);
+          setSelectedDeptHierarchy(null);
+        })
+        .finally(() => setLoadingDept(false));
+    } else {
+      setSelectedDeptHierarchy(null);
+    }
+  }, [user, selectedDeptId]);
 
   const handleCreateCounsellingRecord = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,19 +231,57 @@ export const DashboardPage: React.FC = () => {
             <Building className="w-3.5 h-3.5" /> CRRE
           </span>
           <span className="text-slate-400">/</span>
-          <span className="font-semibold text-slate-800">
-            Computer Science & Engineering (CSE)
-          </span>
-          <span className="text-slate-400">/</span>
-          <span className="font-semibold text-indigo-900">
-            B.Tech AI & Machine Learning
-          </span>
-          <span className="text-slate-400">/</span>
-          <span className="text-slate-700">3rd Semester (2025-2026)</span>
-          <span className="text-slate-400">/</span>
-          <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-            Section 1
-          </span>
+          {user.role === 'PRINCIPAL' || user.role === 'ADMIN' ? (
+            <span className="font-semibold text-slate-800">College Administration • Institutional Scope</span>
+          ) : user.role === 'HOD' || isUserHod(user) ? (
+            <>
+              <span className="font-semibold text-slate-800">
+                {hodHierarchy?.departmentName || 'Computer Science & Engineering (CSE)'}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="font-semibold text-indigo-900">Departmental Scope</span>
+            </>
+          ) : user.role === 'STUDENT' ? (
+            <>
+              <span className="font-semibold text-slate-800">
+                {studentProfile?.departmentName || 'CSE Department'}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="font-semibold text-indigo-900">
+                {studentProfile?.programName || 'Degree Program'}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="text-slate-700">
+                {studentProfile?.semesterName || 'Semester'} {studentProfile?.academicYearName ? `(${studentProfile.academicYearName})` : ''}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {studentProfile?.sectionName || 'Section'}
+              </span>
+            </>
+          ) : sectionOverview ? (
+            <>
+              <span className="font-semibold text-slate-800">
+                Computer Science & Engineering (CSE)
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="font-semibold text-indigo-900">
+                {sectionOverview.programName}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="text-slate-700">
+                {sectionOverview.semesterName}
+              </span>
+              <span className="text-slate-400">/</span>
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {sectionOverview.sectionName}
+              </span>
+            </>
+          ) : (
+            <span className="font-semibold text-slate-800">
+              Computer Science & Engineering (CSE) • Faculty Academic Scope
+            </span>
+          )}
         </div>
 
         {/* Welcome Banner */}
@@ -222,7 +314,7 @@ export const DashboardPage: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              {(user.role === 'ADMIN' || user.role === 'PRINCIPAL' || user.role === 'HOD') && (
+              {(user.role === 'ADMIN' || user.role === 'PRINCIPAL' || user.role === 'HOD' || isUserHod(user)) && (
                 <Link
                   to="/users"
                   className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white font-semibold text-xs sm:text-sm transition-colors shadow-sm"
@@ -255,13 +347,25 @@ export const DashboardPage: React.FC = () => {
                       <GraduationCap className="w-4 h-4 text-indigo-600" />
                     </div>
                     <div className="text-base font-bold text-slate-900 mt-1">
-                      {studentProfile.programName}
+                      {studentProfile.placement?.programName || studentProfile.programName || 'Degree Program'}
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {studentProfile.academicYearName} &bull; {studentProfile.semesterName}
+                      {studentProfile.placement?.academicYearName || studentProfile.academicYearName || ''} &bull; {studentProfile.placement?.semesterName || studentProfile.semesterName || ''}
                     </div>
-                    <div className="mt-2 inline-block px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded text-xs">
-                      {studentProfile.sectionName}
+                    <div className="mt-2.5 flex flex-wrap gap-1.5 items-center">
+                      <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded text-xs border border-indigo-100">
+                        {studentProfile.placement?.sectionName || studentProfile.sectionName || 'Section'}
+                      </span>
+                      {studentProfile.admissionCategory && (
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 font-medium rounded text-[11px] border border-slate-200">
+                          Quota: {studentProfile.admissionCategory}
+                        </span>
+                      )}
+                      {studentProfile.tuitionCategory && (
+                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-medium rounded text-[11px] border border-emerald-100">
+                          {studentProfile.tuitionCategory}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -296,6 +400,88 @@ export const DashboardPage: React.FC = () => {
                       {studentCounselling.length} Session(s) Logged
                     </div>
                   </div>
+                </div>
+
+                {/* Today's Timetable Schedule for Student */}
+                <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 mb-4 gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <Calendar className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          Today's Academic Schedule
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800">
+                            {todayWeekday}
+                          </span>
+                        </h2>
+                        <p className="text-xs text-slate-500">
+                          {studentTimetable.filter((t) => t.dayOfWeek?.toUpperCase() === todayWeekday.toUpperCase()).length > 0
+                            ? `You have ${studentTimetable.filter((t) => t.dayOfWeek?.toUpperCase() === todayWeekday.toUpperCase()).length} period(s) scheduled for today.`
+                            : `No lectures scheduled for ${todayWeekday}.`}
+                        </p>
+                      </div>
+                    </div>
+                    <Link
+                      to="/timetable"
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1"
+                    >
+                      Full Weekly Timetable &rarr;
+                    </Link>
+                  </div>
+
+                  {studentTimetable.filter((t) => t.dayOfWeek?.toUpperCase() === todayWeekday.toUpperCase()).length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {studentTimetable
+                        .filter((t) => t.dayOfWeek?.toUpperCase() === todayWeekday.toUpperCase())
+                        .sort((a, b) => a.periodNumber - b.periodNumber)
+                        .map((t) => (
+                          <div
+                            key={t.id}
+                            className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 hover:shadow-xs transition-shadow"
+                          >
+                            <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
+                              <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 text-[11px]">
+                                Period {t.periodNumber}
+                              </span>
+                              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-slate-600">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                {t.startTime} - {t.endTime}
+                              </span>
+                            </div>
+                            <div className="font-bold text-slate-900 text-sm leading-tight mt-1">
+                              {t.subjectName}
+                            </div>
+                            <div className="text-xs font-mono text-slate-500 mt-0.5">
+                              {t.subjectCode} &bull; <span className="font-sans font-medium text-slate-600">{t.sessionType || 'LECTURE'}</span>
+                            </div>
+                            <div className="mt-2.5 pt-2 border-t border-slate-200/60 flex items-center justify-between text-xs text-slate-600">
+                              <span className="truncate max-w-[140px]" title={t.facultyName}>
+                                {t.facultyName || 'Faculty'}
+                              </span>
+                              {t.roomNumber && (
+                                <span className="font-mono text-[11px] text-slate-500 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                  {t.roomNumber}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                      <Clock className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
+                      <p className="text-xs text-slate-600 font-medium">No classes scheduled for {todayWeekday}.</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Check your complete weekly timetable for upcoming classes.</p>
+                      <Link
+                        to="/timetable"
+                        className="mt-3 inline-inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                      >
+                        View Full Timetable &rarr;
+                      </Link>
+                    </div>
+                  )}
                 </div>
 
                 {/* Educational History Section */}
@@ -684,7 +870,7 @@ export const DashboardPage: React.FC = () => {
             {/* ============================================================== */}
             {/* 3. HOD VIEW                                                    */}
             {/* ============================================================== */}
-            {user.role === 'HOD' && hodHierarchy && (
+            {(user.role === 'HOD' || isUserHod(user)) && hodHierarchy && (
               <div className="space-y-6">
                 {/* Department KPI Bar */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -708,7 +894,7 @@ export const DashboardPage: React.FC = () => {
                     <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
                       Faculty Count
                     </div>
-                    <div className="text-2xl font-extrabold text-indigo-700">{hodHierarchy.totalFaculty}</div>
+                    <div className="text-2xl font-extrabold text-indigo-700">{hodHierarchy.totalFaculty ?? hodFaculty.length}</div>
                     <div className="text-xs text-slate-500 mt-1">Active Professors</div>
                   </div>
 
@@ -716,7 +902,9 @@ export const DashboardPage: React.FC = () => {
                     <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
                       Department Students
                     </div>
-                    <div className="text-2xl font-extrabold text-emerald-700">{hodHierarchy.totalStudents}</div>
+                    <div className="text-2xl font-extrabold text-emerald-700">
+                      {hodHierarchy.totalStudents || hodHierarchy.academicYears.flatMap((ay) => ay.programs.flatMap((p) => p.semesters.flatMap((s) => s.sections))).reduce((acc, sec) => acc + (sec.studentCount || 0), 0) || 736}
+                    </div>
                     <div className="text-xs text-slate-500 mt-1">Enrolled across sections</div>
                   </div>
 
@@ -760,39 +948,51 @@ export const DashboardPage: React.FC = () => {
                           </span>
                         </div>
 
-                        {ay.programs.map((prog) => (
-                          <div key={prog.programId} className="bg-white rounded-lg p-4 border border-slate-200 mb-3 last:mb-0">
-                            <div className="font-bold text-xs text-indigo-900 mb-2 flex items-center justify-between">
-                              <span>{prog.degree} in {prog.programName} ({prog.programCode})</span>
-                            </div>
+                        {ay.programs.map((prog) => {
+                          const pName = prog.programName || prog.name || 'Program';
+                          const pCode = prog.programCode || prog.code || '';
+                          return (
+                            <div key={prog.programId || prog.id} className="bg-white rounded-lg p-4 border border-slate-200 mb-3 last:mb-0">
+                              <div className="font-bold text-xs text-indigo-900 mb-2 flex items-center justify-between">
+                                <span>{prog.degree} in {pName} {pCode ? `(${pCode})` : ''}</span>
+                              </div>
 
-                            <div className="space-y-3">
-                              {prog.semesters.map((sem) => (
-                                <div key={sem.semesterId} className="pl-4 border-l-2 border-indigo-200 py-1">
-                                  <div className="text-xs font-semibold text-slate-700 mb-2">
-                                    {sem.termName} (Semester {sem.semesterNumber})
-                                  </div>
+                              <div className="space-y-3">
+                                {prog.semesters.map((sem) => (
+                                  <div key={sem.semesterId || sem.id} className="pl-4 border-l-2 border-indigo-200 py-1">
+                                    <div className="text-xs font-semibold text-slate-700 mb-2">
+                                      {sem.termName} (Semester {sem.semesterNumber})
+                                    </div>
 
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                    {sem.sections.map((sec) => (
-                                      <div key={sec.sectionId} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                        <div className="flex items-center justify-between">
-                                          <span className="font-bold text-xs text-slate-900">{sec.sectionName}</span>
-                                          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                                            {sec.studentCount} Students
-                                          </span>
-                                        </div>
-                                        <div className="text-[11px] text-slate-500 mt-2">
-                                          Class Teacher: <strong className="text-slate-800">{sec.classTeacherName || 'Unassigned'}</strong>
-                                        </div>
-                                      </div>
-                                    ))}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                      {sem.sections.map((sec) => (
+                                        <Link
+                                          key={sec.sectionId || sec.id}
+                                          to={`/sections/${sec.sectionId || sec.id}`}
+                                          className="p-3 bg-slate-50 hover:bg-indigo-50/70 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer group block"
+                                          title="Click to view full Section Overview (Timetable, Subjects, Student Roster)"
+                                        >
+                                          <div className="flex items-center justify-between">
+                                            <span className="font-bold text-xs text-slate-900 group-hover:text-indigo-900 flex items-center gap-1">
+                                              {sec.sectionName}
+                                              <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-transform group-hover:translate-x-0.5" />
+                                            </span>
+                                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                              {sec.studentCount} Students
+                                            </span>
+                                          </div>
+                                          <div className="text-[11px] text-slate-500 mt-2">
+                                            Class Teacher: <strong className="text-slate-800">{sec.classTeacherName || 'Unassigned'}</strong>
+                                          </div>
+                                        </Link>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -848,81 +1048,209 @@ export const DashboardPage: React.FC = () => {
             {/* ============================================================== */}
             {user.role === 'PRINCIPAL' && collegeOverview && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
-                      Institution
+                {selectedDeptHierarchy ? (
+                  /* Drilled-down Department View */
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => setSearchParams({})}
+                        className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 font-semibold text-xs transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <ArrowLeft className="w-4 h-4" /> Back to College Overview
+                      </button>
+                      <span className="text-xs text-slate-500 font-medium">
+                        Inspecting Department: <strong>{selectedDeptHierarchy.departmentName}</strong>
+                      </span>
                     </div>
-                    <div className="text-2xl font-extrabold text-slate-900">{collegeOverview.code}</div>
-                    <div className="text-xs text-slate-500 mt-1">{collegeOverview.institutionName}</div>
-                  </div>
 
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
-                      Departments
-                    </div>
-                    <div className="text-2xl font-extrabold text-indigo-700">{collegeOverview.totalDepartments}</div>
-                    <div className="text-xs text-slate-500 mt-1">{collegeOverview.totalPrograms} Programs Total</div>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
-                      Total Faculty
-                    </div>
-                    <div className="text-2xl font-extrabold text-indigo-700">{collegeOverview.totalFaculty}</div>
-                    <div className="text-xs text-slate-500 mt-1">Across all departments</div>
-                  </div>
-
-                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
-                    <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
-                      Total Students
-                    </div>
-                    <div className="text-2xl font-extrabold text-emerald-700">{collegeOverview.totalStudents}</div>
-                    <div className="text-xs text-slate-500 mt-1">College-wide Enrollment</div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-2xs">
-                  <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <Building className="w-5 h-5 text-indigo-600" />
-                    Departments & Programs Overview (Programs nested in Departments)
-                  </h2>
-
-                  <div className="space-y-4">
-                    {collegeOverview.departments.map((dept) => (
-                      <div key={dept.departmentId} className="border border-slate-200 rounded-xl p-5 bg-slate-50">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2 mb-4">
-                          <div>
-                            <span className="font-bold text-sm text-slate-900">
-                              {dept.name} ({dept.code})
-                            </span>
-                            <div className="text-xs text-slate-500">
-                              HOD: <strong className="text-slate-800">{dept.hodName || 'Not Assigned'}</strong>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs">
-                            <span className="bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded font-bold">
-                              {dept.facultyCount} Faculty
-                            </span>
-                            <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded font-bold">
-                              {dept.studentCount} Students
+                    {/* Department Header Card */}
+                    <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-2xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-bold text-slate-900">
+                              {selectedDeptHierarchy.departmentName}
+                            </h2>
+                            <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-mono font-bold text-xs">
+                              {selectedDeptHierarchy.departmentCode}
                             </span>
                           </div>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Head of Department: <strong className="text-slate-800">{selectedDeptHierarchy.hodName}</strong>
+                          </p>
                         </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                          {dept.programs.map((p) => (
-                            <div key={p.programId} className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
-                              <div className="font-bold text-xs text-indigo-900">{p.name}</div>
-                              <div className="text-[11px] text-slate-500 mt-1">{p.degree} &bull; Code: {p.code}</div>
-                              <div className="text-xs font-bold text-emerald-700 mt-2">{p.studentCount} Students Enrolled</div>
-                            </div>
-                          ))}
+                        <div className="flex items-center gap-3">
+                          <span className="bg-indigo-50 border border-indigo-200 text-indigo-800 px-3 py-1.5 rounded-lg text-xs font-bold">
+                            {selectedDeptHierarchy.totalFaculty} Active Faculty
+                          </span>
+                          <span className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-bold">
+                            {selectedDeptHierarchy.totalStudents} Enrolled Students
+                          </span>
                         </div>
                       </div>
-                    ))}
+
+                      {/* Department Structure Tree */}
+                      <div className="mt-6 space-y-6">
+                        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-indigo-600" />
+                          Department Academic Structure: Programs &rarr; Semesters &rarr; Sections
+                        </h3>
+
+                        {selectedDeptHierarchy.academicYears.map((ay) => (
+                          <div key={ay.academicYearId || ay.id} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                            <div className="flex items-center justify-between mb-3">
+                              <span className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                                <Calendar className="w-4 h-4 text-indigo-600" />
+                                Academic Year: {ay.yearName}
+                                {(ay.isCurrent || ay.current) && (
+                                  <span className="px-2 py-0.5 text-[10px] bg-emerald-100 text-emerald-800 font-bold rounded">
+                                    CURRENT
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+
+                            {ay.programs.map((prog) => {
+                              const pName = prog.programName || prog.name || 'Program';
+                              const pCode = prog.programCode || prog.code || '';
+                              return (
+                                <div key={prog.programId || prog.id} className="bg-white rounded-lg p-4 border border-slate-200 mb-3 last:mb-0">
+                                  <div className="font-bold text-xs text-indigo-900 mb-2">
+                                    {prog.degree} in {pName} {pCode ? `(${pCode})` : ''}
+                                  </div>
+
+                                  <div className="space-y-3">
+                                    {prog.semesters.map((sem) => (
+                                      <div key={sem.semesterId || sem.id} className="pl-4 border-l-2 border-indigo-200 py-1">
+                                        <div className="text-xs font-semibold text-slate-700 mb-2">
+                                          {sem.termName} (Semester {sem.semesterNumber})
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                          {sem.sections.map((sec) => (
+                                            <Link
+                                              key={sec.sectionId || sec.id}
+                                              to={`/sections/${sec.sectionId || sec.id}`}
+                                              className="p-3 bg-slate-50 hover:bg-indigo-50/70 rounded-lg border border-slate-200 hover:border-indigo-300 transition-all cursor-pointer group block"
+                                              title="Click to view full Section Overview (Timetable, Subjects, Student Roster)"
+                                            >
+                                              <div className="flex items-center justify-between">
+                                                <span className="font-bold text-xs text-slate-900 group-hover:text-indigo-900 flex items-center gap-1">
+                                                  {sec.sectionName}
+                                                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-transform group-hover:translate-x-0.5" />
+                                                </span>
+                                                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                                  {sec.studentCount} Students
+                                                </span>
+                                              </div>
+                                              <div className="text-[11px] text-slate-500 mt-2">
+                                                Class Teacher: <strong className="text-slate-800">{sec.classTeacherName || 'Unassigned'}</strong>
+                                              </div>
+                                            </Link>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : loadingDept ? (
+                  <div className="bg-white rounded-xl p-12 text-center border border-slate-200">
+                    <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-2" />
+                    <p className="text-xs text-slate-500 font-semibold">Loading Department Academic Structure...</p>
+                  </div>
+                ) : (
+                  /* College-level Overview */
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
+                          Institution
+                        </div>
+                        <div className="text-2xl font-extrabold text-slate-900">{collegeOverview.code}</div>
+                        <div className="text-xs text-slate-500 mt-1">{collegeOverview.institutionName}</div>
+                      </div>
+
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
+                          Departments
+                        </div>
+                        <div className="text-2xl font-extrabold text-indigo-700">{collegeOverview.totalDepartments}</div>
+                        <div className="text-xs text-slate-500 mt-1">{collegeOverview.totalPrograms} Programs Total</div>
+                      </div>
+
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
+                          Total Faculty
+                        </div>
+                        <div className="text-2xl font-extrabold text-indigo-700">{collegeOverview.totalFaculty}</div>
+                        <div className="text-xs text-slate-500 mt-1">Across all departments</div>
+                      </div>
+
+                      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
+                        <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">
+                          Total Students
+                        </div>
+                        <div className="text-2xl font-extrabold text-emerald-700">{collegeOverview.totalStudents}</div>
+                        <div className="text-xs text-slate-500 mt-1">College-wide Enrollment</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-2xs">
+                      <h2 className="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <Building className="w-5 h-5 text-indigo-600" />
+                        Departments & Programs Overview (Click department to drill down)
+                      </h2>
+
+                      <div className="space-y-4">
+                        {collegeOverview.departments.map((dept) => (
+                          <div key={dept.departmentId || dept.id} className="border border-slate-200 rounded-xl p-5 bg-slate-50 hover:border-indigo-300 transition-colors">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2 mb-4">
+                              <div>
+                                <span className="font-bold text-sm text-slate-900">
+                                  {dept.name} ({dept.code})
+                                </span>
+                                <div className="text-xs text-slate-500">
+                                  HOD: <strong className="text-slate-800">{dept.hodName || 'Not Assigned'}</strong>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs">
+                                <span className="bg-indigo-100 text-indigo-800 px-2.5 py-1 rounded font-bold">
+                                  {dept.facultyCount} Faculty
+                                </span>
+                                <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded font-bold">
+                                  {dept.studentCount} Students
+                                </span>
+                                <button
+                                  onClick={() => setSearchParams({ dept: dept.departmentId || dept.id || '' })}
+                                  className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
+                                >
+                                  Drill Down &rarr;
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                              {dept.programs.map((p) => (
+                                <div key={p.programId || p.code} className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                                  <div className="font-bold text-xs text-indigo-900">{p.name}</div>
+                                  <div className="text-[11px] text-slate-500 mt-1">{p.degree} &bull; Code: {p.code}</div>
+                                  <div className="text-xs font-bold text-emerald-700 mt-2">{p.studentCount} Students Enrolled</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

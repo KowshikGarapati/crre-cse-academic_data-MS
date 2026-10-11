@@ -4,24 +4,39 @@ import { Navbar } from '../components/Navbar';
 import { academicApi } from '../api/academic.api';
 import { studentApi } from '../api/student.api';
 import { facultyApi } from '../api/faculty.api';
-import type { FacultyTimetableEntryDto, TimetableEntryDto } from '../types/auth.types';
+import { isUserHod } from '../types/auth.types';
+import type {
+  FacultyTimetableEntryDto,
+  TimetableEntryDto,
+  AcademicMetadata,
+  SectionDetailOverviewDto,
+} from '../types/auth.types';
 import {
   Calendar,
   Coffee,
   Utensils,
   Award,
   Loader2,
+  Filter,
 } from 'lucide-react';
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 
 export const TimetablePage: React.FC = () => {
   const { user } = useAuth();
+  const [metadata, setMetadata] = useState<AcademicMetadata | null>(null);
   const [sectionEntries, setSectionEntries] = useState<TimetableEntryDto[]>([]);
   const [facultyEntries, setFacultyEntries] = useState<FacultyTimetableEntryDto[]>([]);
+  const [selectedSectionId, setSelectedSectionId] = useState<string>('');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('ALL');
+  const [sectionOverview, setSectionOverview] = useState<SectionDetailOverviewDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sectionLoading, setSectionLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'section' | 'personal'>('section');
 
+  const isHod = isUserHod(user);
+
+  // Initial load
   useEffect(() => {
     async function loadData() {
       if (!user) return;
@@ -31,36 +46,96 @@ export const TimetablePage: React.FC = () => {
           const list = await studentApi.getMyTimetable();
           setSectionEntries(list);
           setViewMode('section');
-        } else if (user.role === 'FACULTY') {
+        } else {
+          // FACULTY, HOD, PRINCIPAL, ADMIN
           const [facList, meta] = await Promise.all([
-            facultyApi.getMyTimetable().catch(() => []),
+            user.role === 'FACULTY' ? facultyApi.getMyTimetable().catch(() => []) : Promise.resolve([]),
             academicApi.getMetadata().catch(() => null),
           ]);
-          setFacultyEntries(facList);
-          setViewMode(facList.length > 0 ? 'personal' : 'section');
 
-          const sec1 = meta?.sections.find((s) => s.sectionName.includes('1')) || meta?.sections[0];
-          if (sec1) {
-            const secList = await academicApi.getSectionTimetable(sec1.id).catch(() => []);
-            setSectionEntries(secList);
+          setFacultyEntries(facList);
+          setMetadata(meta);
+
+          // For ordinary faculty with no HOD role, default to personal schedule if available
+          if (user.role === 'FACULTY' && !isHod && facList.length > 0) {
+            setViewMode('personal');
+          } else {
+            setViewMode('section');
           }
-        } else {
-          // HOD, PRINCIPAL, ADMIN
-          const meta = await academicApi.getMetadata();
-          const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
-          if (sec1) {
-            const list = await academicApi.getSectionTimetable(sec1.id);
-            setSectionEntries(list);
+
+          if (meta && meta.sections.length > 0) {
+            const initialSecId = meta.sections[0].id;
+            setSelectedSectionId(initialSecId);
+            const overview = await academicApi.getSectionOverview(initialSecId).catch(() => null);
+            setSectionOverview(overview);
+            if (overview?.timetable) {
+              setSectionEntries(overview.timetable);
+            }
           }
         }
       } catch (err) {
-        console.error('Failed to load timetable', err);
+        console.error('Failed to load timetable data', err);
       } finally {
         setLoading(false);
       }
     }
     loadData();
-  }, [user]);
+  }, [user, isHod]);
+
+  // Handle section drilldown selection
+  const handleSectionSelect = async (secId: string) => {
+    setSelectedSectionId(secId);
+    setSectionLoading(true);
+    try {
+      const overview = await academicApi.getSectionOverview(secId);
+      setSectionOverview(overview);
+      setSectionEntries(overview.timetable || []);
+    } catch (err) {
+      console.error('Failed to load section overview', err);
+      // Fallback to basic section timetable
+      const list = await academicApi.getSectionTimetable(secId).catch(() => []);
+      setSectionEntries(list);
+    } finally {
+      setSectionLoading(false);
+    }
+  };
+
+  // Filter sections by selected program
+  const filteredSections = React.useMemo(() => {
+    if (!metadata) return [];
+    if (!selectedProgramId || selectedProgramId === 'ALL') return metadata.sections;
+    
+    const prog = metadata.programs.find((p) => p.id === selectedProgramId);
+    return metadata.sections.filter((sec) => {
+      if (sec.programCode && prog) {
+        return sec.programCode === prog.code;
+      }
+      const programSubjects = metadata.subjects.filter((s) => s.programId === selectedProgramId);
+      const validSemesterIds = new Set(programSubjects.map((s) => s.semesterId));
+      return validSemesterIds.has(sec.semesterId);
+    });
+  }, [metadata, selectedProgramId]);
+
+  // Handle program change with automatic section selection
+  const handleProgramSelect = (progId: string) => {
+    setSelectedProgramId(progId);
+    if (!metadata) return;
+    let targetSections = metadata.sections;
+    if (progId !== 'ALL') {
+      const prog = metadata.programs.find((p) => p.id === progId);
+      targetSections = metadata.sections.filter((sec) => {
+        if (sec.programCode && prog) {
+          return sec.programCode === prog.code;
+        }
+        const programSubjects = metadata.subjects.filter((s) => s.programId === progId);
+        const validSemesterIds = new Set(programSubjects.map((s) => s.semesterId));
+        return validSemesterIds.has(sec.semesterId);
+      });
+    }
+    if (targetSections.length > 0) {
+      handleSectionSelect(targetSections[0].id);
+    }
+  };
 
   // Lookup helper for section timetable
   const getSectionEntry = (day: string, period: number) => {
@@ -97,19 +172,27 @@ export const TimetablePage: React.FC = () => {
                       ? 'My Academic Class Timetable'
                       : viewMode === 'personal'
                       ? 'My Faculty Teaching Schedule'
-                      : 'Master Class Timetable • Section 1'}
+                      : sectionOverview
+                      ? `${sectionOverview.sectionName} Class Timetable`
+                      : 'Section Academic Timetable'}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
                     7 Periods &bull; 09:30 AM – 04:30 PM
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  CRRE &bull; CSE Department &bull; B.Tech Artificial Intelligence & Machine Learning &bull; 2nd Year (3rd Sem)
+                  {user.role === 'STUDENT'
+                    ? 'Student Enrolled Section Schedule'
+                    : viewMode === 'personal'
+                    ? 'Personal weekly teaching assignment schedule'
+                    : sectionOverview
+                    ? `${sectionOverview.programCode || 'B.Tech'} ${sectionOverview.programName || ''} • ${sectionOverview.semesterName || ''} • Academic Year ${sectionOverview.academicYearName || ''}`
+                    : 'Hierarchical Section Schedule Directory'}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {user.role === 'FACULTY' && (
                 <div className="flex items-center p-1 bg-slate-100 rounded-lg border border-slate-200 text-xs font-semibold">
                   <button
@@ -120,7 +203,7 @@ export const TimetablePage: React.FC = () => {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    My Teaching Slots ({facultyEntries.length})
+                    My Teaching Schedule ({facultyEntries.length})
                   </button>
                   <button
                     onClick={() => setViewMode('section')}
@@ -130,17 +213,68 @@ export const TimetablePage: React.FC = () => {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    Section 1 Master
+                    Section Timetables
                   </button>
                 </div>
               )}
 
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-200 text-xs font-semibold">
-                <Award className="w-3.5 h-3.5 text-teal-600" />
-                Class Teacher: CH. Rama Lakshmi
-              </span>
+              {viewMode === 'section' && sectionOverview?.classTeacherName && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-teal-50 text-teal-800 border border-teal-200 text-xs font-semibold">
+                  <Award className="w-3.5 h-3.5 text-teal-600" />
+                  Class Teacher: {sectionOverview.classTeacherName}
+                </span>
+              )}
             </div>
           </div>
+
+          {/* Drill Down Hierarchy Selector for HOD, Principal, Faculty */}
+          {user.role !== 'STUDENT' && viewMode === 'section' && metadata && (
+            <div className="mt-5 pt-5 border-t border-slate-100 flex flex-wrap items-center gap-4 text-xs">
+              <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-indigo-600" />
+                Hierarchical Drill-Down:
+              </span>
+
+              {/* Program Filter */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-slate-500 font-medium">Program:</label>
+                <select
+                  value={selectedProgramId}
+                  onChange={(e) => handleProgramSelect(e.target.value)}
+                  className="p-1.5 border border-slate-300 rounded-md bg-white font-medium text-slate-800 text-xs"
+                >
+                  <option value="ALL">All Programs ({metadata.programs.length})</option>
+                  {metadata.programs.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} - {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Section Selector */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-slate-500 font-medium">Target Section:</label>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => handleSectionSelect(e.target.value)}
+                  className="p-1.5 border border-indigo-300 rounded-md bg-indigo-50/50 font-bold text-indigo-900 text-xs"
+                >
+                  {filteredSections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.programCode ? `${s.programCode} - ` : ''}{s.sectionName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {sectionOverview && (
+                <div className="ml-auto text-slate-500 font-medium">
+                  Enrolled Students: <strong className="text-slate-900">{sectionOverview.totalStudents}</strong>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Timetable Legend */}
@@ -170,10 +304,11 @@ export const TimetablePage: React.FC = () => {
 
         {/* Timetable Grid */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-          {loading ? (
+          {loading || sectionLoading ? (
             <div className="p-16 text-center text-slate-500">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
-              <p className="text-sm">Loading timetable grid...</p>
+              <p className="text-sm font-semibold text-slate-700">Loading Timetable Grid...</p>
+              <p className="text-xs text-slate-400 mt-1">Retrieving scheduled academic periods and faculty allocations</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -264,7 +399,7 @@ export const TimetablePage: React.FC = () => {
                       })}
 
                       {/* Morning Break */}
-                      <td className="p-1 bg-amber-50/40 border-r border-slate-200 text-[10px] text-amber-800 font-medium writing-mode-vertical">
+                      <td className="p-1 bg-amber-50/40 border-r border-slate-200 text-[10px] text-amber-800 font-medium">
                         Break
                       </td>
 

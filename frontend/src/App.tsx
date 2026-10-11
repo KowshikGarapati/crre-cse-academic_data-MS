@@ -9,6 +9,9 @@ import { StudentsPage } from './pages/StudentsPage';
 import { StudentDetailPage } from './pages/StudentDetailPage';
 import { TimetablePage } from './pages/TimetablePage';
 import { UsersPage } from './pages/UsersPage';
+import { ResourcesPage } from './pages/ResourcesPage';
+import { SectionOverviewPage } from './pages/SectionOverviewPage';
+import { CounsellingPage } from './pages/CounsellingPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 
 export const App: React.FC = () => {
@@ -54,6 +57,30 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <TimetablePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/counselling"
+            element={
+              <ProtectedRoute>
+                <CounsellingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sections/:sectionId"
+            element={
+              <ProtectedRoute>
+                <SectionOverviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/resources"
+            element={
+              <ProtectedRoute>
+                <ResourcesPage />
               </ProtectedRoute>
             }
           />

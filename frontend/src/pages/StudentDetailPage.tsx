@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
 import { studentApi } from '../api/student.api';
 import type { StudentDetailDto } from '../types/auth.types';
@@ -22,11 +23,19 @@ import {
 export const StudentDetailPage: React.FC = () => {
   const { studentId } = useParams<{ studentId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [student, setStudent] = useState<StudentDetailDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string>('ALL');
+
+  useEffect(() => {
+    if (user?.role === 'STUDENT') {
+      navigate('/', { replace: true });
+      return;
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
     if (!studentId) return;
@@ -165,6 +174,16 @@ export const StudentDetailPage: React.FC = () => {
                   }`}>
                     {student.entryType || 'REGULAR'}
                   </span>
+                  {student.admissionCategory && (
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      Admission: {student.admissionCategory}
+                    </span>
+                  )}
+                  {student.tuitionCategory && (
+                    <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                      Tuition: {student.tuitionCategory}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                     {student.status || 'ACTIVE'}
@@ -247,6 +266,20 @@ export const StudentDetailPage: React.FC = () => {
                   <dd className="font-semibold text-indigo-700 mt-0.5">
                     {student.placement?.sectionName || 'Section 1'}
                   </dd>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100">
+                  <div>
+                    <dt className="text-slate-400 font-medium">Admission Category</dt>
+                    <dd className="font-semibold text-slate-800 mt-0.5">
+                      {student.admissionCategory || 'CONVENOR'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-slate-400 font-medium">Tuition Category</dt>
+                    <dd className="font-semibold text-slate-800 mt-0.5">
+                      {student.tuitionCategory || 'RTF'}
+                    </dd>
+                  </div>
                 </div>
                 <div className="pt-2 border-t border-slate-100">
                   <dt className="text-slate-400 font-medium flex items-center gap-1">

@@ -38,4 +38,20 @@ export const academicApi = {
     );
     return res.data;
   },
+
+  async getAcademicPeriods(): Promise<import('../types/auth.types').PeriodDefinitionDto[]> {
+    const res = await request<ApiResponse<import('../types/auth.types').PeriodDefinitionDto[]>>(
+      '/api/v1/academic/periods',
+      { method: 'GET' }
+    );
+    return res.data;
+  },
+
+  async getSectionOverview(sectionId: string): Promise<import('../types/auth.types').SectionDetailOverviewDto> {
+    const res = await request<ApiResponse<import('../types/auth.types').SectionDetailOverviewDto>>(
+      `/api/v1/sections/${sectionId}/overview`,
+      { method: 'GET' }
+    );
+    return res.data;
+  },
 };

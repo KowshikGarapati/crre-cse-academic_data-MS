@@ -34,8 +34,14 @@ export interface UserSummary {
   aadharNumber?: number | null;
   apaarNumber?: number | null;
   enabled: boolean;
+  mustChangePassword?: boolean;
   responsibilities: ResponsibilitySummary[];
 }
+
+export const isUserHod = (user: UserSummary | null | undefined): boolean => {
+  if (!user) return false;
+  return user.role === 'HOD' || (user.responsibilities?.some(r => r.type === 'HOD_DEPT' && r.status === 'ACTIVE') ?? false);
+};
 
 export interface LoginRequest {
   identifier: string;
@@ -81,6 +87,8 @@ export interface SectionDto {
   semesterId: string;
   sectionNumber: number;
   sectionName: string;
+  programCode?: string;
+  programName?: string;
 }
 
 export interface SubjectDto {
@@ -93,9 +101,18 @@ export interface SubjectDto {
   credits: number;
 }
 
+export interface SemesterDto {
+  id: string;
+  programId: string;
+  semesterNumber: number;
+  termName: string;
+  current: boolean;
+}
+
 export interface AcademicMetadata {
   departments: DepartmentDto[];
   programs: ProgramDto[];
+  semesters?: SemesterDto[];
   sections: SectionDto[];
   subjects: SubjectDto[];
 }
@@ -125,6 +142,7 @@ export interface TimetableEntryDto {
   startTime: string;
   endTime: string;
   roomNumber?: string;
+  sessionType?: string;
 }
 
 export interface CreateUserRequest {
@@ -286,13 +304,18 @@ export interface StudentFullProfileDto {
   fullName: string;
   entryType: string;
   email: string;
-  departmentName: string;
-  programName: string;
-  academicYearName: string;
-  semesterName: string;
-  sectionName: string;
+  placement?: StudentPlacementDto;
+  departmentName?: string;
+  programName?: string;
+  academicYearName?: string;
+  semesterName?: string;
+  sectionName?: string;
+  admissionCategory?: string | null;
+  tuitionCategory?: string | null;
   classTeacherName?: string;
+  classTeacherEmail?: string;
   counsellorName?: string;
+  counsellorEmail?: string;
   educationalHistory: EducationalHistoryDto[];
 }
 
@@ -332,6 +355,13 @@ export interface StudentCounsellingSessionDto {
   status: string;
 }
 
+export interface StudentCounsellingSummaryDto {
+  counsellorName: string;
+  counsellorEmail?: string;
+  counsellorEmployeeNumber?: string;
+  sessions: StudentCounsellingSessionDto[];
+}
+
 export interface StudentDetailDto {
   id: string;
   userId?: string;
@@ -343,6 +373,8 @@ export interface StudentDetailDto {
   apaarNumber?: number;
   entryType: string;
   status: string;
+  admissionCategory?: string | null;
+  tuitionCategory?: string | null;
   placement?: StudentPlacementDto;
   classTeacherName?: string;
   classTeacherEmail?: string;
@@ -359,6 +391,7 @@ export interface StudentDetailDto {
 
 // ==================== HOD DTOS ====================
 export interface HodSectionDto {
+  id?: string;
   sectionId: string;
   sectionName: string;
   sectionNumber: number;
@@ -367,6 +400,7 @@ export interface HodSectionDto {
 }
 
 export interface HodSemesterDto {
+  id?: string;
   semesterId: string;
   termName: string;
   semesterNumber: number;
@@ -374,17 +408,22 @@ export interface HodSemesterDto {
 }
 
 export interface HodProgramDto {
+  id?: string;
   programId: string;
+  code?: string;
   programCode: string;
+  name?: string;
   programName: string;
   degree: string;
   semesters: HodSemesterDto[];
 }
 
 export interface HodAcademicYearDto {
+  id?: string;
   academicYearId: string;
   yearName: string;
-  isCurrent: boolean;
+  isCurrent?: boolean;
+  current?: boolean;
   programs: HodProgramDto[];
 }
 
@@ -408,6 +447,7 @@ export interface PrincipalProgramDto {
 }
 
 export interface PrincipalDepartmentDto {
+  id?: string;
   departmentId: string;
   code: string;
   name: string;
@@ -426,6 +466,56 @@ export interface CollegeOverviewDto {
   totalFaculty: number;
   totalStudents: number;
   departments: PrincipalDepartmentDto[];
+}
+
+// ==================== PERIOD & SECTION OVERVIEW DTOS ====================
+export interface PeriodDefinitionDto {
+  periodNumber: number;
+  startTime: string;
+  endTime: string;
+  label: string;
+  timeRange: string;
+}
+
+export interface EnrolledSubjectFacultyDto {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  subjectType: string;
+  credits: number;
+  facultyId?: string | null;
+  facultyName: string;
+  facultyEmail?: string | null;
+}
+
+export interface SectionDetailOverviewDto {
+  sectionId: string;
+  sectionName: string;
+  programId: string;
+  programName: string;
+  programCode: string;
+  semesterId: string;
+  semesterName: string;
+  academicYearName: string;
+  classTeacherId?: string | null;
+  classTeacherName: string;
+  classTeacherEmail?: string | null;
+  totalStudents: number;
+  regularStudents: number;
+  lateralStudents: number;
+  subjects: EnrolledSubjectFacultyDto[];
+  timetable: TimetableEntryDto[];
+  students: StudentDto[];
+}
+
+export interface SectionStudentsGroupDto {
+  sectionId: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+  subjectCode: string;
+  subjectName: string;
+  students: StudentDto[];
 }
 
 // ==================== CREATION REQUESTS ====================
@@ -485,3 +575,51 @@ export interface CreateFacultyUserRequest {
   counsellor?: boolean;
 }
 
+// ==================== CURRICULUM & RESOURCES ====================
+export interface ResourceDto {
+  id: string;
+  conceptId: string;
+  title: string;
+  description?: string;
+  resourceType: 'YOUTUBE_VIDEO' | 'PDF_DOCUMENT';
+  url: string;
+  fileSizeBytes?: number;
+  uploadedByName: string;
+  createdAt: string;
+}
+
+export interface ConceptDto {
+  id: string;
+  unitId: string;
+  conceptOrder: number;
+  title: string;
+  description?: string;
+  resources: ResourceDto[];
+}
+
+export interface UnitDto {
+  id: string;
+  subjectId: string;
+  unitNumber: number;
+  title: string;
+  description?: string;
+  concepts: ConceptDto[];
+}
+
+export interface SubjectCurriculumDto {
+  subjectId: string;
+  subjectCode: string;
+  subjectName: string;
+  type: string;
+  credits: number;
+  facultyInstructor?: string;
+  units: UnitDto[];
+}
+
+export interface CreateResourceRequest {
+  title: string;
+  description?: string;
+  resourceType: string;
+  url: string;
+  fileSizeBytes?: number;
+}

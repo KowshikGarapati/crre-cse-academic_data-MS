@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
-import type { Role } from '../types/auth.types';
+import { type Role, isUserHod } from '../types/auth.types';
 import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -28,8 +28,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to="/" replace />;
+  if (allowedRoles) {
+    const isHod = isUserHod(user);
+    const hasRole = allowedRoles.includes(user.role) || (allowedRoles.includes('HOD') && isHod);
+    if (!hasRole) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;

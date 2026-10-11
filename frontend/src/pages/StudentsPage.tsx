@@ -2,36 +2,45 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
-import { academicApi } from '../api/academic.api';
+import { studentApi } from '../api/student.api';
 import { facultyApi } from '../api/faculty.api';
-import { principalApi } from '../api/principal.api';
-import type { MyClassDto, MySectionOverviewDto, StudentDto } from '../types/auth.types';
+import { academicApi } from '../api/academic.api';
+import type { AcademicMetadata, MyClassDto, MySectionOverviewDto, StudentDto } from '../types/auth.types';
+import { isUserHod } from '../types/auth.types';
 import {
   Users,
   Search,
-  Award,
   Loader2,
   CheckCircle2,
   AlertTriangle,
   ChevronRight,
+  Filter,
 } from 'lucide-react';
 
 export const StudentsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [students, setStudents] = useState<StudentDto[]>([]);
+  const [metadata, setMetadata] = useState<AcademicMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sectionOverview, setSectionOverview] = useState<MySectionOverviewDto | null>(null);
   const [myClasses, setMyClasses] = useState<MyClassDto[]>([]);
-  const [selectedClassSection, setSelectedClassSection] = useState<string>('');
+  const [selectedClassSection, setSelectedClassSection] = useState<string>('MY_SECTION');
   const [scopeNotice, setScopeNotice] = useState<string | null>(null);
+
+  // Hierarchical Filter States for HOD / Principal
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('ALL');
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('ALL');
+  const [selectedSectionId, setSelectedSectionId] = useState<string>('ALL');
 
   const isClassTeacher =
     user?.role === 'CLASS_TEACHER' ||
     user?.responsibilities?.some(
       (r) => r.type === 'CLASS_TEACHER' && r.status === 'ACTIVE'
     );
+
+  const isHod = isUserHod(user);
 
   useEffect(() => {
     if (!user) return;
@@ -45,36 +54,34 @@ export const StudentsPage: React.FC = () => {
       setLoading(true);
       setScopeNotice(null);
       try {
-        if (user.role === 'PRINCIPAL') {
-          const list = await principalApi.getAllStudents();
-          setStudents(list);
-        } else if (isClassTeacher) {
-          const [list, overview] = await Promise.all([
-            facultyApi.getMySectionStudents(),
-            facultyApi.getMySectionOverview(),
+        // Load metadata for hierarchical filtering
+        const meta = await academicApi.getMetadata().catch(() => null);
+        setMetadata(meta);
+
+        if (isClassTeacher) {
+          // Class Teacher Scope: Load ONLY the corresponding section's students
+          const [overview, sectionRoster, classes] = await Promise.all([
+            facultyApi.getMySectionOverview().catch(() => null),
+            facultyApi.getMySectionStudents().catch(() => []),
+            facultyApi.getMyClasses().catch(() => []),
           ]);
-          setStudents(list);
           setSectionOverview(overview);
-        } else if (user.role === 'FACULTY') {
-          // Ordinary faculty without class teacher responsibility
-          const classes = await facultyApi.getMyClasses();
+          setStudents(sectionRoster);
           setMyClasses(classes);
-          if (classes.length > 0) {
-            const firstSec = classes[0].sectionId;
-            setSelectedClassSection(firstSec);
-            const list = await facultyApi.getStudentsForClass(firstSec);
-            setStudents(list);
-          } else {
-            setScopeNotice('You are not currently assigned as a Class Teacher and have no taught classes.');
-          }
+          setSelectedClassSection('MY_SECTION');
+        } else if (user.role === 'FACULTY' && !isHod) {
+          // Teaching Faculty Scope
+          const [classes, list] = await Promise.all([
+            facultyApi.getMyClasses().catch(() => []),
+            studentApi.getScopedStudents(),
+          ]);
+          setMyClasses(classes);
+          setStudents(list);
+          setSelectedClassSection('ALL');
         } else {
-          // HOD or ADMIN
-          const meta = await academicApi.getMetadata();
-          const sec1 = meta.sections.find((s) => s.sectionName.includes('1')) || meta.sections[0];
-          if (sec1) {
-            const list = await academicApi.getSectionStudents(sec1.id);
-            setStudents(list);
-          }
+          // HOD, PRINCIPAL, ADMIN
+          const list = await studentApi.getScopedStudents();
+          setStudents(list);
         }
       } catch (err) {
         console.error('Failed to load students', err);
@@ -85,14 +92,23 @@ export const StudentsPage: React.FC = () => {
     }
 
     loadData();
-  }, [user, isClassTeacher, navigate]);
+  }, [user, isClassTeacher, isHod, navigate]);
 
-  const handleClassChange = async (sectionId: string) => {
-    setSelectedClassSection(sectionId);
+  // Handle Class Teacher / Faculty section switch
+  const handleClassChange = async (sectionChoice: string) => {
+    setSelectedClassSection(sectionChoice);
     setLoading(true);
     try {
-      const list = await facultyApi.getStudentsForClass(sectionId);
-      setStudents(list);
+      if (sectionChoice === 'MY_SECTION') {
+        const list = await facultyApi.getMySectionStudents();
+        setStudents(list);
+      } else if (sectionChoice === 'ALL') {
+        const list = await studentApi.getScopedStudents();
+        setStudents(list);
+      } else {
+        const list = await facultyApi.getStudentsForClass(sectionChoice);
+        setStudents(list);
+      }
     } catch (err) {
       console.error('Failed to load students for class', err);
     } finally {
@@ -100,17 +116,72 @@ export const StudentsPage: React.FC = () => {
     }
   };
 
-  const filteredStudents = useMemo(() => {
-    const q = search.toLowerCase().trim();
-    if (!q) return students;
-    return students.filter(
-      (s) =>
-        s.fullName.toLowerCase().includes(q) ||
-        s.registrationNumber.toLowerCase().includes(q)
-    );
-  }, [students, search]);
+  // Cascading programs for Principal
+  const availablePrograms = useMemo(() => {
+    if (!metadata) return [];
+    if (selectedDeptId === 'ALL') return metadata.programs;
+    return metadata.programs.filter((p) => p.departmentId === selectedDeptId);
+  }, [metadata, selectedDeptId]);
 
-  if (!user) return null;
+  // Cascading sections for HOD / Principal
+  const availableSections = useMemo(() => {
+    if (!metadata) return [];
+    if (selectedProgramId === 'ALL') {
+      if (selectedDeptId === 'ALL') return metadata.sections;
+      const validProgIds = new Set(availablePrograms.map((p) => p.id));
+      const validSemIds = new Set(
+        metadata.subjects.filter((s) => validProgIds.has(s.programId)).map((s) => s.semesterId)
+      );
+      return metadata.sections.filter((sec) => {
+        if (sec.programCode) {
+          return availablePrograms.some((p) => p.code === sec.programCode);
+        }
+        return validSemIds.has(sec.semesterId);
+      });
+    }
+
+    const prog = metadata.programs.find((p) => p.id === selectedProgramId);
+    const progSubjects = metadata.subjects.filter((s) => s.programId === selectedProgramId);
+    const validSemesterIds = new Set(progSubjects.map((s) => s.semesterId));
+    return metadata.sections.filter((sec) => {
+      if (sec.programCode && prog) {
+        return sec.programCode === prog.code;
+      }
+      return validSemesterIds.has(sec.semesterId);
+    });
+  }, [metadata, selectedDeptId, selectedProgramId, availablePrograms]);
+
+  // Combined hierarchical and text search filtering
+  const filteredStudents = useMemo(() => {
+    let result = students;
+
+    // Filter strictly by hierarchical section ID if selected
+    if (selectedSectionId !== 'ALL') {
+      result = result.filter((s) => s.sectionId === selectedSectionId);
+    } else if (selectedProgramId !== 'ALL') {
+      const prog = metadata?.programs.find((p) => p.id === selectedProgramId);
+      if (prog) {
+        result = result.filter((s) =>
+          s.programName?.toLowerCase().includes(prog.code.toLowerCase()) ||
+          s.programName?.toLowerCase().includes(prog.name.toLowerCase())
+        );
+      }
+    }
+
+    // Text search
+    const q = search.toLowerCase().trim();
+    if (q) {
+      result = result.filter(
+        (s) =>
+          s.fullName.toLowerCase().includes(q) ||
+          s.registrationNumber.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [students, selectedSectionId, selectedProgramId, metadata, search]);
+
+  if (!user || user.role === 'STUDENT') return null;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -129,39 +200,63 @@ export const StudentsPage: React.FC = () => {
                   <h1 className="text-xl font-bold text-slate-900">
                     {user.role === 'PRINCIPAL'
                       ? 'College Students Directory'
+                      : (user.role === 'HOD' || isHod)
+                      ? 'CSE Department Students Roster'
+                      : user.role === 'COUNSELLOR'
+                      ? 'Assigned Mentee Students'
                       : isClassTeacher
-                      ? `${sectionOverview?.sectionName || 'Section 1'} Enrolled Students`
-                      : 'My Class Students'}
+                      ? `${sectionOverview?.sectionName || 'My Section'} Enrolled Students`
+                      : 'My Teaching Students'}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {students.length} Students
+                    {filteredStudents.length} Students
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  CRRE &bull; CSE Department &bull; B.Tech Artificial Intelligence & Machine Learning &bull; 2nd Year (3rd Sem)
+                  {user.role === 'PRINCIPAL'
+                    ? 'CRRE Engineering • Institution-wide Student Scope & Hierarchical Navigation'
+                    : (user.role === 'HOD' || isHod)
+                    ? 'CSE Department • 4 Programs • 10 Sections • Hierarchical Student Explorer'
+                    : isClassTeacher
+                    ? `CSE Department • Dedicated Class Teacher Scope (${sectionOverview?.sectionName || 'Assigned Section'}) • Showing Only Corresponding Section Students`
+                    : 'CSE Department • Faculty Subject Teaching Scope'}
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              {/* Class Teacher Section Controller */}
               {isClassTeacher && (
-                <div className="p-2.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-800 text-xs flex items-center gap-2">
-                  <Award className="w-4 h-4 text-teal-600 flex-shrink-0" />
-                  <span>
-                    Class Teacher: <strong className="font-semibold">{sectionOverview?.classTeacherName || user.fullName}</strong>
-                  </span>
+                <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-lg border border-slate-200 text-xs">
+                  <span className="font-semibold text-slate-600 px-1">Scope:</span>
+                  <select
+                    value={selectedClassSection}
+                    onChange={(e) => handleClassChange(e.target.value)}
+                    className="p-1.5 border border-teal-300 rounded-md bg-white font-bold text-teal-900 text-xs shadow-2xs"
+                  >
+                    <option value="MY_SECTION">
+                      ★ My Section: {sectionOverview?.sectionName || 'Assigned'} ({sectionOverview?.totalStudents || students.length} Students)
+                    </option>
+                    {myClasses.map((c) => (
+                      <option key={c.sectionId + c.subjectId} value={c.sectionId}>
+                        Teaching: {c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
+                      </option>
+                    ))}
+                    <option value="ALL">All Teaching Sections Combined</option>
+                  </select>
                 </div>
               )}
 
-              {/* Class Selector for Ordinary Faculty */}
-              {!isClassTeacher && user.role === 'FACULTY' && myClasses.length > 0 && (
+              {/* Ordinary Faculty Class Selector */}
+              {!isClassTeacher && user.role === 'FACULTY' && !isHod && myClasses.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-600">Select Class:</span>
                   <select
                     value={selectedClassSection}
                     onChange={(e) => handleClassChange(e.target.value)}
-                    className="text-xs p-2 border border-slate-300 rounded-lg bg-white"
+                    className="text-xs p-2 border border-slate-300 rounded-lg bg-white font-medium"
                   >
+                    <option value="ALL">All My Teaching Sections ({students.length})</option>
                     {myClasses.map((c) => (
                       <option key={c.sectionId + c.subjectId} value={c.sectionId}>
                         {c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
@@ -172,6 +267,89 @@ export const StudentsPage: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Hierarchical Selector Bar for Principal and HOD */}
+          {(user.role === 'PRINCIPAL' || user.role === 'ADMIN' || isHod || user.role === 'HOD') && metadata && (
+            <div className="mt-5 pt-5 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                <Filter className="w-3.5 h-3.5 text-indigo-600" />
+                Hierarchical Selector:
+              </span>
+
+              {/* Department filter (Principal only) */}
+              {(user.role === 'PRINCIPAL' || user.role === 'ADMIN') && (
+                <div className="flex items-center gap-1.5">
+                  <label className="text-slate-500 font-medium">Department:</label>
+                  <select
+                    value={selectedDeptId}
+                    onChange={(e) => {
+                      setSelectedDeptId(e.target.value);
+                      setSelectedProgramId('ALL');
+                      setSelectedSectionId('ALL');
+                    }}
+                    className="p-1.5 border border-slate-300 rounded-md bg-white font-medium text-slate-800 text-xs"
+                  >
+                    <option value="ALL">All Departments</option>
+                    {metadata.departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.code} - {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Program filter */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-slate-500 font-medium">Program:</label>
+                <select
+                  value={selectedProgramId}
+                  onChange={(e) => {
+                    setSelectedProgramId(e.target.value);
+                    setSelectedSectionId('ALL');
+                  }}
+                  className="p-1.5 border border-slate-300 rounded-md bg-white font-medium text-slate-800 text-xs"
+                >
+                  <option value="ALL">All Programs</option>
+                  {availablePrograms.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} - {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Section filter */}
+              <div className="flex items-center gap-1.5">
+                <label className="text-slate-500 font-medium">Section:</label>
+                <select
+                  value={selectedSectionId}
+                  onChange={(e) => setSelectedSectionId(e.target.value)}
+                  className="p-1.5 border border-indigo-300 rounded-md bg-indigo-50/50 font-bold text-indigo-900 text-xs"
+                >
+                  <option value="ALL">All Sections ({availableSections.length})</option>
+                  {availableSections.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.programCode ? `${s.programCode} - ` : ''}{s.sectionName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {(selectedProgramId !== 'ALL' || selectedSectionId !== 'ALL' || selectedDeptId !== 'ALL') && (
+                <button
+                  onClick={() => {
+                    setSelectedDeptId('ALL');
+                    setSelectedProgramId('ALL');
+                    setSelectedSectionId('ALL');
+                  }}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline cursor-pointer ml-auto"
+                >
+                  Reset Hierarchy Filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {scopeNotice && (
@@ -195,13 +373,15 @@ export const StudentsPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span>Showing <strong className="text-slate-800">{filteredStudents.length}</strong> of {students.length} students</span>
+            <span>
+              Showing <strong className="text-slate-800">{filteredStudents.length}</strong> of {students.length} students
+            </span>
             {search && (
               <button
                 onClick={() => setSearch('')}
                 className="text-xs text-indigo-600 hover:underline cursor-pointer"
               >
-                Clear filter
+                Clear text filter
               </button>
             )}
           </div>
@@ -212,13 +392,14 @@ export const StudentsPage: React.FC = () => {
           {loading ? (
             <div className="p-12 text-center text-slate-500">
               <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
-              <p className="text-sm">Loading Students...</p>
+              <p className="text-sm font-semibold text-slate-700">Loading Students Directory...</p>
+              <p className="text-xs text-slate-400 mt-1">Applying institutional scope and section enrollments</p>
             </div>
           ) : filteredStudents.length === 0 ? (
             <div className="p-12 text-center text-slate-500">
               <Users className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-              <p className="text-sm font-semibold text-slate-700">No students found</p>
-              <p className="text-xs text-slate-400 mt-1">Try searching with a different roll number or name.</p>
+              <p className="text-sm font-semibold text-slate-700">No students found matching current criteria</p>
+              <p className="text-xs text-slate-400 mt-1">Try resetting the hierarchical filters or clearing your search query.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -239,7 +420,7 @@ export const StudentsPage: React.FC = () => {
                   {filteredStudents.map((s, index) => (
                     <tr
                       key={s.id}
-                      onClick={() => navigate(`/students/${s.id}`)}
+                      onClick={() => navigate(`/students/${s.registrationNumber || s.id}`)}
                       className="hover:bg-indigo-50/70 transition-colors cursor-pointer group"
                       title="Click to view academic details"
                     >
@@ -253,11 +434,11 @@ export const StudentsPage: React.FC = () => {
                         {s.fullName}
                       </td>
                       <td className="py-3 px-4 text-slate-600">
-                        {s.programName || 'B.Tech AI&ML'} ({s.semesterName || 'Sem 3'})
+                        {s.programName || 'Degree Program'} ({s.semesterName || 'Sem'})
                       </td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {s.sectionName || 'Section 1'}
+                          {s.sectionName || 'Section'}
                         </span>
                       </td>
                       <td className="py-3 px-4">

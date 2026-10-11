@@ -12,6 +12,7 @@ import type {
   ResponsibilitySummary,
   AcademicMetadata,
 } from '../types/auth.types';
+import { isUserHod } from '../types/auth.types';
 import {
   Users,
   UserPlus,
@@ -105,7 +106,7 @@ export const UsersPage: React.FC = () => {
     if (currentUser?.role === 'ADMIN' || currentUser?.role === 'PRINCIPAL') {
       return ['PRINCIPAL', 'HOD', 'FACULTY', 'COUNSELLOR', 'CLASS_TEACHER', 'STUDENT'];
     }
-    if (currentUser?.role === 'HOD') {
+    if (currentUser?.role === 'HOD' || isUserHod(currentUser)) {
       // HOD cannot create PRINCIPAL or ADMIN
       return ['FACULTY', 'COUNSELLOR', 'CLASS_TEACHER', 'STUDENT'];
     }

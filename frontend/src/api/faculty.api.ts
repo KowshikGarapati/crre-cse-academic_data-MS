@@ -9,6 +9,7 @@ import type {
   MyClassDto,
   MySectionOverviewDto,
   MySubjectDto,
+  SectionStudentsGroupDto,
   StudentDto,
 } from '../types/auth.types';
 
@@ -45,6 +46,14 @@ export const facultyApi = {
   async getStudentsForClass(sectionId: string): Promise<StudentDto[]> {
     const res = await request<ApiResponse<StudentDto[]>>(
       `/api/v1/faculty/classes/${sectionId}/students`,
+      { method: 'GET' }
+    );
+    return res.data;
+  },
+
+  async getMyStudentsGrouped(): Promise<SectionStudentsGroupDto[]> {
+    const res = await request<ApiResponse<SectionStudentsGroupDto[]>>(
+      '/api/v1/faculty/my-students/grouped',
       { method: 'GET' }
     );
     return res.data;

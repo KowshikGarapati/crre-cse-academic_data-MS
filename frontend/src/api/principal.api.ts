@@ -2,7 +2,7 @@ import { request } from './auth.api';
 import type {
   ApiResponse,
   CollegeOverviewDto,
-  PrincipalDepartmentDto,
+  DepartmentHierarchyDto,
   StudentDto,
 } from '../types/auth.types';
 
@@ -15,8 +15,8 @@ export const principalApi = {
     return res.data;
   },
 
-  async getDepartmentDetails(deptId: string): Promise<PrincipalDepartmentDto> {
-    const res = await request<ApiResponse<PrincipalDepartmentDto>>(
+  async getDepartmentDetails(deptId: string): Promise<DepartmentHierarchyDto> {
+    const res = await request<ApiResponse<DepartmentHierarchyDto>>(
       `/api/v1/principal/departments/${deptId}`,
       { method: 'GET' }
     );
