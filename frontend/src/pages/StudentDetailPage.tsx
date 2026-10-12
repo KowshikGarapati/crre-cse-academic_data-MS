@@ -3,7 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import { Navbar } from '../components/Navbar';
 import { studentApi } from '../api/student.api';
-import type { StudentDetailDto } from '../types/auth.types';
+import { academicApi } from '../api/academic.api';
+import type { AcademicMetadata, StudentDetailDto } from '../types/auth.types';
+import { StudentEditModal } from '../components/StudentEditModal';
 import {
   ArrowLeft,
   GraduationCap,
@@ -18,6 +20,7 @@ import {
   FileText,
   CheckCircle2,
   Lock,
+  Edit,
 } from 'lucide-react';
 
 export const StudentDetailPage: React.FC = () => {
@@ -26,15 +29,18 @@ export const StudentDetailPage: React.FC = () => {
   const { user } = useAuth();
 
   const [student, setStudent] = useState<StudentDetailDto | null>(null);
+  const [metadata, setMetadata] = useState<AcademicMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string>('ALL');
+  const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'STUDENT') {
       navigate('/', { replace: true });
       return;
     }
+    academicApi.getMetadata().then((data) => setMetadata(data)).catch(() => {});
   }, [user, navigate]);
 
   useEffect(() => {
@@ -210,15 +216,26 @@ export const StudentDetailPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Context Badges */}
-            <div className="flex flex-col sm:items-end justify-center pt-3 md:pt-0 border-t md:border-t-0 border-slate-100">
-              <div className="text-xs text-slate-500 font-medium">Academic Hierarchy</div>
-              <div className="text-sm font-bold text-slate-900 mt-0.5">
-                {student.placement?.programName || 'AI & Machine Learning'}
+            {/* Quick Context Badges & Actions */}
+            <div className="flex flex-col sm:items-end justify-center pt-3 md:pt-0 border-t md:border-t-0 border-slate-100 gap-2">
+              <div className="text-right">
+                <div className="text-xs text-slate-500 font-medium">Academic Hierarchy</div>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">
+                  {student.placement?.programName || 'AI & Machine Learning'}
+                </div>
+                <div className="text-xs text-indigo-600 font-medium mt-0.5">
+                  {student.placement?.semesterName || '3rd Semester'} &bull; {student.placement?.academicYearName || '2025-2026'}
+                </div>
               </div>
-              <div className="text-xs text-indigo-600 font-medium mt-0.5">
-                {student.placement?.semesterName || '3rd Semester'} &bull; {student.placement?.academicYearName || '2025-2026'}
-              </div>
+              {user?.role !== 'STUDENT' && (
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                >
+                  <Edit className="w-3.5 h-3.5" /> Edit Student Data
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -596,6 +613,19 @@ export const StudentDetailPage: React.FC = () => {
             )}
           </div>
         </div>
+
+        {showEditModal && student && (
+          <StudentEditModal
+            isOpen={showEditModal}
+            onClose={() => setShowEditModal(false)}
+            studentId={student.id || studentId!}
+            initialData={student}
+            metadata={metadata}
+            onSaved={(updated) => {
+              setStudent(updated);
+            }}
+          />
+        )}
       </main>
     </div>
   );

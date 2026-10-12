@@ -4,6 +4,7 @@ import { useAuth } from '../context/useAuth';
 import { userApi } from '../api/user.api';
 import { responsibilityApi } from '../api/responsibility.api';
 import { academicApi } from '../api/academic.api';
+import { studentApi } from '../api/student.api';
 import type {
   UserSummary,
   Role,
@@ -11,6 +12,8 @@ import type {
   ResponsibilityRequest,
   ResponsibilitySummary,
   AcademicMetadata,
+  CounsellorStudentDto,
+  StudentDto,
 } from '../types/auth.types';
 import { isUserHod } from '../types/auth.types';
 import {
@@ -27,6 +30,8 @@ import {
   Briefcase,
   Eye,
   EyeOff,
+  UserCheck,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
@@ -100,6 +105,24 @@ export const UsersPage: React.FC = () => {
   const [respError, setRespError] = useState<string | null>(null);
   const [isSubmittingResp, setIsSubmittingResp] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Department Students for Counsellor Assignment
+  const [deptStudents, setDeptStudents] = useState<StudentDto[]>([]);
+  const [loadingDeptStudents, setLoadingDeptStudents] = useState(false);
+  const [newCounsellorSelectedStudentIds, setNewCounsellorSelectedStudentIds] = useState<string[]>([]);
+  const [newCounsellorStudentFilter, setNewCounsellorStudentFilter] = useState('');
+
+  // Manage Counsellor Mentees Modal State
+  const [counsellorModalResp, setCounsellorModalResp] = useState<ResponsibilitySummary | null>(null);
+  const [counsellorMentees, setCounsellorMentees] = useState<CounsellorStudentDto[]>([]);
+  const [loadingMentees, setLoadingMentees] = useState(false);
+  const [menteesActiveTab, setMenteesActiveTab] = useState<'CURRENT' | 'ASSIGN_MORE'>('CURRENT');
+  const [menteesFilter, setMenteesFilter] = useState('');
+  const [availableStudentsFilter, setAvailableStudentsFilter] = useState('');
+  const [selectedStudentsToAssign, setSelectedStudentsToAssign] = useState<string[]>([]);
+  const [isAssigningMentees, setIsAssigningMentees] = useState(false);
+  const [isRemovingMenteeId, setIsRemovingMenteeId] = useState<string | null>(null);
+  const [menteeNotice, setMenteeNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Downward authority roles for creation
   const allowedRolesToCreate: Role[] = useMemo(() => {
@@ -339,13 +362,33 @@ export const UsersPage: React.FC = () => {
     }
   };
 
+  const loadDeptStudents = async (): Promise<StudentDto[]> => {
+    if (deptStudents.length > 0) return deptStudents;
+    setLoadingDeptStudents(true);
+    try {
+      const list = await studentApi.getScopedStudents();
+      setDeptStudents(list);
+      return list;
+    } catch (err) {
+      console.error('Failed to load students for assignment', err);
+      return [];
+    } finally {
+      setLoadingDeptStudents(false);
+    }
+  };
+
   const openResponsibilitiesModal = async (u: UserSummary) => {
     setSelectedUserForResp(u);
     setLoadingResp(true);
     setRespError(null);
     setDeleteConfirmId(null);
+    setNewCounsellorSelectedStudentIds([]);
+    setNewCounsellorStudentFilter('');
     try {
-      const resps = await responsibilityApi.getUserResponsibilities(u.id);
+      const [resps] = await Promise.all([
+        responsibilityApi.getUserResponsibilities(u.id),
+        loadDeptStudents(),
+      ]);
       setUserResponsibilities(resps);
       // Pre-fill department / section from metadata
       const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
@@ -371,9 +414,14 @@ export const UsersPage: React.FC = () => {
     setRespError(null);
     setIsSubmittingResp(true);
     try {
+      const payload: ResponsibilityRequest = {
+        ...respForm,
+        studentIds: respForm.type === 'COUNSELLOR' ? newCounsellorSelectedStudentIds : undefined,
+      } as ResponsibilityRequest;
+
       const created = await responsibilityApi.addResponsibility(
         selectedUserForResp.id,
-        respForm as ResponsibilityRequest
+        payload
       );
       setUserResponsibilities((prev) => [created, ...prev]);
       // Also update in parent users list
@@ -385,12 +433,173 @@ export const UsersPage: React.FC = () => {
         )
       );
       setRespForm((prev) => ({ ...prev, description: '' }));
+      setNewCounsellorSelectedStudentIds([]);
+      setNewCounsellorStudentFilter('');
     } catch (err: unknown) {
       setRespError(err instanceof Error ? err.message : 'Failed to assign responsibility');
     } finally {
       setIsSubmittingResp(false);
     }
   };
+
+  const openCounsellorMenteesModal = async (r: ResponsibilitySummary) => {
+    setCounsellorModalResp(r);
+    setLoadingMentees(true);
+    setMenteeNotice(null);
+    setMenteesActiveTab('CURRENT');
+    setSelectedStudentsToAssign([]);
+    setMenteesFilter('');
+    setAvailableStudentsFilter('');
+    try {
+      const [mentees] = await Promise.all([
+        responsibilityApi.getCounsellingStudents(r.id),
+        loadDeptStudents(),
+      ]);
+      setCounsellorMentees(mentees);
+    } catch (err: unknown) {
+      setMenteeNotice({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to load assigned mentees',
+      });
+    } finally {
+      setLoadingMentees(false);
+    }
+  };
+
+  const handleRemoveMentee = async (studentId: string) => {
+    if (!counsellorModalResp) return;
+    setIsRemovingMenteeId(studentId);
+    setMenteeNotice(null);
+    try {
+      await responsibilityApi.removeCounsellingStudent(counsellorModalResp.id, studentId);
+      const updatedMentees = counsellorMentees.filter((m) => m.studentId !== studentId);
+      setCounsellorMentees(updatedMentees);
+      const newCount = updatedMentees.length;
+
+      setCounsellorModalResp((prev) => (prev ? { ...prev, assignedStudentCount: newCount } : null));
+
+      setUserResponsibilities((prev) =>
+        prev.map((item) =>
+          item.id === counsellorModalResp.id
+            ? { ...item, assignedStudentCount: newCount }
+            : item
+        )
+      );
+
+      if (selectedUserForResp) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === selectedUserForResp.id
+              ? {
+                  ...u,
+                  responsibilities: u.responsibilities.map((item) =>
+                    item.id === counsellorModalResp.id
+                      ? { ...item, assignedStudentCount: newCount }
+                      : item
+                  ),
+                }
+              : u
+          )
+        );
+      }
+
+      setMenteeNotice({ type: 'success', message: 'Student removed from counsellor assignment.' });
+    } catch (err: unknown) {
+      setMenteeNotice({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to remove student from counsellor assignment',
+      });
+    } finally {
+      setIsRemovingMenteeId(null);
+    }
+  };
+
+  const handleAssignMoreMentees = async () => {
+    if (!counsellorModalResp || selectedStudentsToAssign.length === 0) return;
+    setIsAssigningMentees(true);
+    setMenteeNotice(null);
+    try {
+      const updatedList = await responsibilityApi.assignCounsellingStudents(
+        counsellorModalResp.id,
+        selectedStudentsToAssign
+      );
+      setCounsellorMentees(updatedList);
+      const newCount = updatedList.length;
+
+      setCounsellorModalResp((prev) => (prev ? { ...prev, assignedStudentCount: newCount } : null));
+
+      setUserResponsibilities((prev) =>
+        prev.map((item) =>
+          item.id === counsellorModalResp.id
+            ? { ...item, assignedStudentCount: newCount }
+            : item
+        )
+      );
+
+      if (selectedUserForResp) {
+        setUsers((prev) =>
+          prev.map((u) =>
+            u.id === selectedUserForResp.id
+              ? {
+                  ...u,
+                  responsibilities: u.responsibilities.map((item) =>
+                    item.id === counsellorModalResp.id
+                      ? { ...item, assignedStudentCount: newCount }
+                      : item
+                  ),
+                }
+              : u
+          )
+        );
+      }
+
+      setSelectedStudentsToAssign([]);
+      setMenteeNotice({
+        type: 'success',
+        message: `Successfully assigned students. Counsellor now has ${newCount} active mentees.`,
+      });
+      setMenteesActiveTab('CURRENT');
+    } catch (err: unknown) {
+      setMenteeNotice({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to assign students to counsellor',
+      });
+    } finally {
+      setIsAssigningMentees(false);
+    }
+  };
+
+  const filteredNewCounsellorStudents = useMemo(() => {
+    const q = newCounsellorStudentFilter.trim().toLowerCase();
+    if (!q) return deptStudents;
+    return deptStudents.filter(
+      (s) =>
+        s.fullName.toLowerCase().includes(q) ||
+        s.registrationNumber.toLowerCase().includes(q)
+    );
+  }, [deptStudents, newCounsellorStudentFilter]);
+
+  const filteredCurrentMentees = useMemo(() => {
+    const q = menteesFilter.trim().toLowerCase();
+    if (!q) return counsellorMentees;
+    return counsellorMentees.filter(
+      (m) =>
+        m.fullName.toLowerCase().includes(q) ||
+        m.registrationNumber.toLowerCase().includes(q)
+    );
+  }, [counsellorMentees, menteesFilter]);
+
+  const availableStudentsToAssign = useMemo(() => {
+    const assignedIds = new Set(counsellorMentees.map((m) => m.studentId));
+    const unassigned = deptStudents.filter((s) => !assignedIds.has(s.id));
+    const q = availableStudentsFilter.trim().toLowerCase();
+    if (!q) return unassigned;
+    return unassigned.filter(
+      (s) =>
+        s.fullName.toLowerCase().includes(q) ||
+        s.registrationNumber.toLowerCase().includes(q)
+    );
+  }, [deptStudents, counsellorMentees, availableStudentsFilter]);
 
   const handleRemoveResponsibility = async (respId: string) => {
     try {
@@ -560,6 +769,8 @@ export const UsersPage: React.FC = () => {
                                     ? `Class Teacher (${r.sectionName || 'Sec 1'})`
                                     : r.type === 'TEACHING'
                                     ? `${r.subjectCode || 'DMGT'} (${r.sectionName || 'Sec 1'})`
+                                    : r.type === 'COUNSELLOR'
+                                    ? `Counsellor (${r.assignedStudentCount ?? 0} Mentees)`
                                     : r.type.replace('_', ' ')}
                                 </span>
                               ))}
@@ -1358,11 +1569,27 @@ export const UsersPage: React.FC = () => {
                           {r.subjectName && <span>Subject: <strong>{r.subjectName}</strong> &bull; </span>}
                           {r.sectionName && <span>Section: <strong>{r.sectionName}</strong> &bull; </span>}
                           {r.departmentName && <span>Dept: <strong>{r.departmentName}</strong></span>}
+                          {r.type === 'COUNSELLOR' && (
+                            <span className="font-semibold text-indigo-700">
+                              {' '}&bull; Mentees: {r.assignedStudentCount ?? 0}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {r.status === 'ACTIVE' && (
-                        <div>
+                        <div className="flex items-center gap-2">
+                          {r.type === 'COUNSELLOR' && (
+                            <button
+                              type="button"
+                              onClick={() => openCounsellorMenteesModal(r)}
+                              className="px-2.5 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1"
+                              title="Manage assigned mentees"
+                            >
+                              <Users className="w-3 h-3" />
+                              Manage Mentees ({r.assignedStudentCount ?? 0})
+                            </button>
+                          )}
                           {deleteConfirmId === r.id ? (
                             <div className="flex items-center gap-1.5">
                               <button
@@ -1501,6 +1728,86 @@ export const UsersPage: React.FC = () => {
                   </div>
                 )}
 
+                {respForm.type === 'COUNSELLOR' && (
+                  <div className="border border-indigo-100 rounded-lg p-3 bg-indigo-50/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-semibold text-slate-800">
+                        Select Initial Mentees (Optional)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-indigo-700">
+                          {newCounsellorSelectedStudentIds.length} selected
+                        </span>
+                        {newCounsellorSelectedStudentIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setNewCounsellorSelectedStudentIds([])}
+                            className="text-[10px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search student by name or roll number..."
+                        value={newCounsellorStudentFilter}
+                        onChange={(e) => setNewCounsellorStudentFilter(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded bg-white text-xs"
+                      />
+                    </div>
+                    {loadingDeptStudents ? (
+                      <div className="py-4 text-center text-slate-500 text-xs">
+                        <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1 text-indigo-600" />
+                        Loading department students...
+                      </div>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto border border-slate-200 rounded bg-white divide-y divide-slate-100">
+                        {filteredNewCounsellorStudents.length === 0 ? (
+                          <div className="p-3 text-center text-slate-400 text-[11px]">
+                            No students match your filter
+                          </div>
+                        ) : (
+                          filteredNewCounsellorStudents.map((st) => {
+                            const isSelected = newCounsellorSelectedStudentIds.includes(st.id);
+                            return (
+                              <label
+                                key={st.id}
+                                className={`p-2 flex items-center justify-between gap-2 hover:bg-slate-50 cursor-pointer text-xs ${
+                                  isSelected ? 'bg-indigo-50/70 font-semibold' : ''
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setNewCounsellorSelectedStudentIds((prev) => [...prev, st.id]);
+                                      } else {
+                                        setNewCounsellorSelectedStudentIds((prev) =>
+                                          prev.filter((id) => id !== st.id)
+                                        );
+                                      }
+                                    }}
+                                    className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                  <span className="font-mono text-slate-900">{st.registrationNumber}</span>
+                                  <span className="text-slate-700">{st.fullName}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500">{st.sectionName || 'Sec 1'}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <label className="block font-medium text-slate-600 mb-1">Notes / Description (Optional)</label>
                   <input
@@ -1524,6 +1831,285 @@ export const UsersPage: React.FC = () => {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Counsellor Mentees Modal */}
+      {counsellorModalResp && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-indigo-600" />
+                  <h3 className="text-base font-bold text-slate-900">
+                    Manage Counsellor Mentees
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Counsellor: <strong className="text-slate-800">{selectedUserForResp?.fullName}</strong> &bull;{' '}
+                  Department: <strong className="text-slate-700">{counsellorModalResp.departmentName || 'CSE'}</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCounsellorModalResp(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer rounded-lg hover:bg-slate-100 transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Notification alert */}
+            {menteeNotice && (
+              <div
+                className={`mb-4 p-3 rounded-lg border text-xs flex items-center gap-2 ${
+                  menteeNotice.type === 'success'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-red-50 border-red-200 text-red-700'
+                }`}
+              >
+                {menteeNotice.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                )}
+                <span>{menteeNotice.message}</span>
+              </div>
+            )}
+
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-slate-200 mb-4 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setMenteesActiveTab('CURRENT')}
+                className={`pb-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+                  menteesActiveTab === 'CURRENT'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Assigned Mentees ({counsellorMentees.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setMenteesActiveTab('ASSIGN_MORE')}
+                className={`pb-2.5 px-4 cursor-pointer transition-colors border-b-2 ${
+                  menteesActiveTab === 'ASSIGN_MORE'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Assign More Students ({availableStudentsToAssign.length} available)
+              </button>
+            </div>
+
+            {/* TAB 1: Current Mentees */}
+            {menteesActiveTab === 'CURRENT' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search assigned mentees by name or roll number..."
+                      value={menteesFilter}
+                      onChange={(e) => setMenteesFilter(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <span className="text-xs text-slate-500 shrink-0">
+                    Showing <strong>{filteredCurrentMentees.length}</strong> of {counsellorMentees.length}
+                  </span>
+                </div>
+
+                {loadingMentees ? (
+                  <div className="p-8 text-center text-slate-500 text-xs">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-indigo-600 mb-2" />
+                    Loading assigned students...
+                  </div>
+                ) : filteredCurrentMentees.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                    {counsellorMentees.length === 0
+                      ? 'No students are currently assigned to this counsellor. Switch to "Assign More Students" tab to assign mentees.'
+                      : 'No assigned mentees match your search filter.'}
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 sticky top-0">
+                        <tr>
+                          <th className="py-2.5 px-3 w-10 text-center">#</th>
+                          <th className="py-2.5 px-3">Roll Number</th>
+                          <th className="py-2.5 px-3">Student Name</th>
+                          <th className="py-2.5 px-3">Section</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-3 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                        {filteredCurrentMentees.map((m, idx) => (
+                          <tr key={m.studentId} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2.5 px-3 text-center text-slate-400 font-mono">
+                              {idx + 1}
+                            </td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                              {m.registrationNumber}
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-800">
+                              {m.fullName}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                                {m.sectionName || 'Sec 1'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                {m.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                type="button"
+                                disabled={isRemovingMenteeId === m.studentId}
+                                onClick={() => handleRemoveMentee(m.studentId)}
+                                className="px-2 py-1 text-[11px] font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors cursor-pointer disabled:opacity-50 inline-flex items-center gap-1"
+                                title="Remove student from counsellor assignment"
+                              >
+                                {isRemovingMenteeId === m.studentId ? (
+                                  <Loader2 className="w-3 h-3 animate-spin text-red-600" />
+                                ) : (
+                                  <Trash2 className="w-3 h-3 text-red-600" />
+                                )}
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 2: Assign More Mentees */}
+            {menteesActiveTab === 'ASSIGN_MORE' && (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search unassigned students by name or roll number..."
+                      value={availableStudentsFilter}
+                      onChange={(e) => setAvailableStudentsFilter(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allFilteredIds = availableStudentsToAssign.map((s) => s.id);
+                        setSelectedStudentsToAssign((prev) => Array.from(new Set([...prev, ...allFilteredIds])));
+                      }}
+                      className="px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 cursor-pointer"
+                    >
+                      Select All Filtered
+                    </button>
+                    {selectedStudentsToAssign.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudentsToAssign([])}
+                        className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer"
+                      >
+                        Clear Selection
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs px-1 text-slate-500">
+                  <span>
+                    Selected: <strong className="text-indigo-700">{selectedStudentsToAssign.length}</strong> students
+                  </span>
+                  <span>
+                    Available: <strong className="text-slate-800">{availableStudentsToAssign.length}</strong>
+                  </span>
+                </div>
+
+                {availableStudentsToAssign.length === 0 ? (
+                  <div className="p-8 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-500">
+                    All department students are already assigned to this counsellor or no students match your filter.
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto divide-y divide-slate-100">
+                    {availableStudentsToAssign.map((st) => {
+                      const isChecked = selectedStudentsToAssign.includes(st.id);
+                      return (
+                        <label
+                          key={st.id}
+                          className={`p-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 cursor-pointer text-xs ${
+                            isChecked ? 'bg-indigo-50/60 font-semibold' : ''
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedStudentsToAssign((prev) => [...prev, st.id]);
+                                } else {
+                                  setSelectedStudentsToAssign((prev) =>
+                                    prev.filter((id) => id !== st.id)
+                                  );
+                                }
+                              }}
+                              className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <span className="font-mono font-bold text-slate-900">
+                              {st.registrationNumber}
+                            </span>
+                            <span className="text-slate-800">{st.fullName}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-500 text-[11px]">
+                            <span>{st.programName}</span>
+                            <span>&bull;</span>
+                            <span className="font-semibold text-indigo-700">{st.sectionName || 'Sec 1'}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCounsellorModalResp(null)}
+                    className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer text-xs"
+                  >
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedStudentsToAssign.length === 0 || isAssigningMentees}
+                    onClick={handleAssignMoreMentees}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-50 cursor-pointer text-xs flex items-center gap-1.5"
+                  >
+                    {isAssigningMentees && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    Assign {selectedStudentsToAssign.length > 0 ? `(${selectedStudentsToAssign.length})` : ''} Selected Students
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

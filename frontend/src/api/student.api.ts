@@ -6,6 +6,7 @@ import type {
   StudentDto,
   StudentFullProfileDto,
   TimetableEntryDto,
+  UpdateStudentRequest,
 } from '../types/auth.types';
 
 export const studentApi = {
@@ -49,6 +50,14 @@ export const studentApi = {
   async getStudentDetails(studentId: string): Promise<StudentDetailDto> {
     const res = await request<ApiResponse<StudentDetailDto>>(`/api/v1/students/${studentId}`, {
       method: 'GET',
+    });
+    return res.data;
+  },
+
+  async updateStudent(studentId: string, req: UpdateStudentRequest): Promise<StudentDetailDto> {
+    const res = await request<ApiResponse<StudentDetailDto>>(`/api/v1/students/${studentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
     });
     return res.data;
   },

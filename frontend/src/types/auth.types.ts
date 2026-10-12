@@ -21,6 +21,8 @@ export interface ResponsibilitySummary {
   sectionName?: string | null;
   status: 'ACTIVE' | 'INACTIVE';
   description?: string | null;
+  userId?: string | null;
+  assignedStudentCount?: number | null;
 }
 
 export interface UserSummary {
@@ -179,6 +181,32 @@ export interface ResponsibilityRequest {
   subjectId?: string;
   sectionId?: string;
   description?: string;
+  studentIds?: string[];
+}
+
+export interface CounsellorStudentDto {
+  assignmentId: string;
+  studentId: string;
+  registrationNumber: string;
+  fullName: string;
+  entryType: string;
+  sectionName: string;
+  programName: string;
+  semesterName: string;
+  assignedAt: string;
+  status: string;
+}
+
+export interface UpdateStudentRequest {
+  fullName: string;
+  email?: string;
+  entryType?: 'REGULAR' | 'LATERAL';
+  admissionCategory?: 'CONVENOR' | 'MANAGEMENT' | '' | null;
+  tuitionCategory?: 'RTF' | 'SELF_FINANCE' | '' | null;
+  aadharNumber?: number | null;
+  apaarNumber?: number | null;
+  sectionId?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE';
 }
 
 // ==================== FACULTY DTOS ====================

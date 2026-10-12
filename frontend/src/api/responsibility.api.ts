@@ -1,5 +1,5 @@
 import { request } from './auth.api';
-import type { ApiResponse, ResponsibilityRequest, ResponsibilitySummary } from '../types/auth.types';
+import type { ApiResponse, CounsellorStudentDto, ResponsibilityRequest, ResponsibilitySummary } from '../types/auth.types';
 
 export const responsibilityApi = {
   async getUserResponsibilities(userId: string): Promise<ResponsibilitySummary[]> {
@@ -42,5 +42,37 @@ export const responsibilityApi = {
     await request<ApiResponse<void>>(`/api/v1/responsibilities/${id}`, {
       method: 'DELETE',
     });
+  },
+
+  async getCounsellingStudents(responsibilityId: string): Promise<CounsellorStudentDto[]> {
+    const res = await request<ApiResponse<CounsellorStudentDto[]>>(
+      `/api/v1/responsibilities/${responsibilityId}/counselling-students`,
+      { method: 'GET' }
+    );
+    return res.data;
+  },
+
+  async assignCounsellingStudents(
+    responsibilityId: string,
+    studentIds: string[]
+  ): Promise<CounsellorStudentDto[]> {
+    const res = await request<ApiResponse<CounsellorStudentDto[]>>(
+      `/api/v1/responsibilities/${responsibilityId}/counselling-students`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ studentIds }),
+      }
+    );
+    return res.data;
+  },
+
+  async removeCounsellingStudent(
+    responsibilityId: string,
+    studentId: string
+  ): Promise<void> {
+    await request<ApiResponse<void>>(
+      `/api/v1/responsibilities/${responsibilityId}/counselling-students/${studentId}`,
+      { method: 'DELETE' }
+    );
   },
 };

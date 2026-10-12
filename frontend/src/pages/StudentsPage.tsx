@@ -15,12 +15,15 @@ import {
   AlertTriangle,
   ChevronRight,
   Filter,
+  Edit,
 } from 'lucide-react';
+import { StudentEditModal } from '../components/StudentEditModal';
 
 export const StudentsPage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [students, setStudents] = useState<StudentDto[]>([]);
+  const [selectedStudentForEdit, setSelectedStudentForEdit] = useState<StudentDto | null>(null);
   const [metadata, setMetadata] = useState<AcademicMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -455,9 +458,24 @@ export const StudentsPage: React.FC = () => {
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right">
-                        <span className="inline-flex items-center text-slate-400 group-hover:text-indigo-600 font-semibold text-[11px] gap-0.5">
-                          View <ChevronRight className="w-3.5 h-3.5" />
-                        </span>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {user?.role !== 'STUDENT' && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedStudentForEdit(s);
+                              }}
+                              className="px-2 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-200 transition-colors cursor-pointer flex items-center gap-1"
+                              title="Edit Student"
+                            >
+                              <Edit className="w-3 h-3" /> Edit
+                            </button>
+                          )}
+                          <span className="inline-flex items-center text-slate-400 group-hover:text-indigo-600 font-semibold text-[11px] gap-0.5">
+                            View <ChevronRight className="w-3.5 h-3.5" />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -466,6 +484,31 @@ export const StudentsPage: React.FC = () => {
             </div>
           )}
         </div>
+
+        {selectedStudentForEdit && (
+          <StudentEditModal
+            isOpen={Boolean(selectedStudentForEdit)}
+            onClose={() => setSelectedStudentForEdit(null)}
+            studentId={selectedStudentForEdit.id}
+            metadata={metadata}
+            onSaved={(updated) => {
+              setStudents((prev) =>
+                prev.map((item) =>
+                  item.id === updated.id || item.registrationNumber === updated.registrationNumber
+                    ? {
+                        ...item,
+                        fullName: updated.fullName,
+                        entryType: updated.entryType,
+                        status: updated.status,
+                        sectionId: updated.placement?.sectionId || item.sectionId,
+                        sectionName: updated.placement?.sectionName || item.sectionName,
+                      }
+                    : item
+                )
+              );
+            }}
+          />
+        )}
       </main>
     </div>
   );
