@@ -39,4 +39,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByRegistrationNumber(String registrationNumber);
 
     boolean existsByUniqueId(String uniqueId);
+
+    boolean existsByAadharNumber(Long aadharNumber);
+
+    boolean existsByApaarNumber(Long apaarNumber);
 }

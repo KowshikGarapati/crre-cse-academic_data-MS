@@ -16,9 +16,33 @@ public record ResponsibilitySummaryDto(
     UUID sectionId,
     String sectionName,
     String status,
-    String description
+    String description,
+    UUID userId,
+    Integer assignedStudentCount
 ) {
+    public ResponsibilitySummaryDto(
+        UUID id,
+        String type,
+        UUID departmentId,
+        String departmentName,
+        UUID programId,
+        String programName,
+        UUID subjectId,
+        String subjectCode,
+        String subjectName,
+        UUID sectionId,
+        String sectionName,
+        String status,
+        String description
+    ) {
+        this(id, type, departmentId, departmentName, programId, programName, subjectId, subjectCode, subjectName, sectionId, sectionName, status, description, null, null);
+    }
+
     public static ResponsibilitySummaryDto fromEntity(Responsibility r) {
+        return fromEntity(r, null);
+    }
+
+    public static ResponsibilitySummaryDto fromEntity(Responsibility r, Integer studentCount) {
         return new ResponsibilitySummaryDto(
             r.getId(),
             r.getType(),
@@ -32,7 +56,9 @@ public record ResponsibilitySummaryDto(
             r.getSection() != null ? r.getSection().getId() : null,
             r.getSection() != null ? r.getSection().getSectionName() : null,
             r.getStatus(),
-            r.getDescription()
+            r.getDescription(),
+            r.getUser() != null ? r.getUser().getId() : null,
+            studentCount
         );
     }
 }

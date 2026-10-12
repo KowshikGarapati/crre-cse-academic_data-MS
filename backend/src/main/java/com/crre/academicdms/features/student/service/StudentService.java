@@ -11,6 +11,7 @@ import com.crre.academicdms.features.counselling.repository.CounsellingRecordRep
 import com.crre.academicdms.features.responsibility.model.Responsibility;
 import com.crre.academicdms.features.responsibility.repository.ResponsibilityRepository;
 import com.crre.academicdms.features.student.dto.StudentDtos.*;
+import com.crre.academicdms.features.student.dto.UpdateStudentRequest;
 import com.crre.academicdms.features.student.model.Student;
 import com.crre.academicdms.features.student.model.StudentEducationalHistory;
 import com.crre.academicdms.features.student.model.StudentEnrollment;
@@ -38,6 +39,8 @@ public class StudentService {
     private final CounsellingRecordRepository counsellingRecordRepository;
     private final TimetableRepository timetableRepository;
     private final com.crre.academicdms.features.academic.repository.SubjectRepository subjectRepository;
+    private final com.crre.academicdms.features.academic.repository.SectionRepository sectionRepository;
+    private final com.crre.academicdms.features.user.repository.UserRepository userRepository;
     private final com.crre.academicdms.features.academic.service.HodService hodService;
     private final StudentScopeService studentScopeService;
 
@@ -50,6 +53,8 @@ public class StudentService {
         CounsellingRecordRepository counsellingRecordRepository,
         TimetableRepository timetableRepository,
         com.crre.academicdms.features.academic.repository.SubjectRepository subjectRepository,
+        com.crre.academicdms.features.academic.repository.SectionRepository sectionRepository,
+        com.crre.academicdms.features.user.repository.UserRepository userRepository,
         com.crre.academicdms.features.academic.service.HodService hodService,
         StudentScopeService studentScopeService
     ) {
@@ -61,6 +66,8 @@ public class StudentService {
         this.counsellingRecordRepository = counsellingRecordRepository;
         this.timetableRepository = timetableRepository;
         this.subjectRepository = subjectRepository;
+        this.sectionRepository = sectionRepository;
+        this.userRepository = userRepository;
         this.hodService = hodService;
         this.studentScopeService = studentScopeService;
     }
@@ -394,5 +401,149 @@ public class StudentService {
             "Attendance data not available yet.",
             "No academic results recorded."
         );
+    }
+
+    @Transactional
+    public StudentDetailDto updateStudent(String identifier, UpdateStudentRequest req, UserPrincipal caller) {
+        if (caller == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Authentication required");
+        }
+        if (caller.getRole() == com.crre.academicdms.features.user.model.Role.STUDENT) {
+            throw new org.springframework.security.access.AccessDeniedException("Students are not authorized to edit student records");
+        }
+
+        Student student = studentScopeService.resolveStudent(identifier);
+
+        if (!studentScopeService.canEditStudent(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to edit this student within your academic scope");
+        }
+
+        // 1. Full name
+        if (req.fullName() != null && !req.fullName().isBlank()) {
+            String cleanName = req.fullName().trim();
+            student.setFullName(cleanName);
+            if (student.getUser() != null) {
+                student.getUser().setFullName(cleanName);
+            }
+        }
+
+        // 2. Entry type: REGULAR, LATERAL
+        if (req.entryType() != null && !req.entryType().isBlank()) {
+            String et = req.entryType().trim().toUpperCase();
+            if (!java.util.Set.of("REGULAR", "LATERAL").contains(et)) {
+                throw new IllegalArgumentException("Invalid entry type: must be REGULAR or LATERAL");
+            }
+            student.setEntryType(et);
+        }
+
+        // 3. Admission category: CONVENOR, MANAGEMENT, or null
+        if (req.admissionCategory() != null) {
+            String ac = req.admissionCategory().trim();
+            if (ac.isEmpty()) {
+                student.setAdmissionCategory(null);
+            } else {
+                String upper = ac.toUpperCase();
+                if (!java.util.Set.of("CONVENOR", "MANAGEMENT").contains(upper)) {
+                    throw new IllegalArgumentException("Invalid admission category: must be CONVENOR or MANAGEMENT");
+                }
+                student.setAdmissionCategory(upper);
+            }
+        }
+
+        // 4. Tuition category: RTF, SELF_FINANCE, or null
+        if (req.tuitionCategory() != null) {
+            String tc = req.tuitionCategory().trim();
+            if (tc.isEmpty()) {
+                student.setTuitionCategory(null);
+            } else {
+                String upper = tc.toUpperCase();
+                if (!java.util.Set.of("RTF", "SELF_FINANCE").contains(upper)) {
+                    throw new IllegalArgumentException("Invalid tuition category: must be RTF or SELF_FINANCE");
+                }
+                student.setTuitionCategory(upper);
+            }
+        }
+
+        // 5. User Email & Identifiers
+        User studentUser = student.getUser();
+        if (studentUser != null) {
+            if (req.email() != null && !req.email().isBlank()) {
+                String cleanEmail = req.email().trim().toLowerCase();
+                if (!cleanEmail.equalsIgnoreCase(studentUser.getEmail())) {
+                    if (userRepository.existsByEmail(cleanEmail)) {
+                        throw new IllegalArgumentException("Email is already registered by another account: " + cleanEmail);
+                    }
+                    studentUser.setEmail(cleanEmail);
+                }
+            }
+            if (req.aadharNumber() != null) {
+                if (!req.aadharNumber().equals(studentUser.getAadharNumber())) {
+                    if (userRepository.existsByAadharNumber(req.aadharNumber())) {
+                        throw new IllegalArgumentException("Aadhar number is already registered to another user");
+                    }
+                    studentUser.setAadharNumber(req.aadharNumber());
+                }
+            }
+            if (req.apaarNumber() != null) {
+                if (!req.apaarNumber().equals(studentUser.getApaarNumber())) {
+                    if (userRepository.existsByApaarNumber(req.apaarNumber())) {
+                        throw new IllegalArgumentException("APAAR number is already registered to another user");
+                    }
+                    studentUser.setApaarNumber(req.apaarNumber());
+                }
+            }
+        }
+
+        // 6. Status (restricted to ADMIN, PRINCIPAL, HOD)
+        if (req.status() != null && !req.status().isBlank()) {
+            String st = req.status().trim().toUpperCase();
+            if (!java.util.Set.of("ACTIVE", "INACTIVE").contains(st)) {
+                throw new IllegalArgumentException("Invalid status: must be ACTIVE or INACTIVE");
+            }
+            boolean canManageStatus = caller.getRole() == com.crre.academicdms.features.user.model.Role.ADMIN
+                || caller.getRole() == com.crre.academicdms.features.user.model.Role.PRINCIPAL
+                || caller.getRole() == com.crre.academicdms.features.user.model.Role.HOD
+                || caller.isHod();
+            if (canManageStatus) {
+                student.setStatus(st);
+                if (studentUser != null) {
+                    studentUser.setEnabled("ACTIVE".equals(st));
+                }
+            }
+        }
+
+        // 7. Section reassignment (restricted to ADMIN, PRINCIPAL, HOD, CLASS_TEACHER)
+        if (req.sectionId() != null) {
+            List<StudentEnrollment> enrollments = enrollmentRepository.findByStudentId(student.getId());
+            Section currentSec = enrollments.stream().filter(StudentEnrollment::isCurrent).map(StudentEnrollment::getSection).findFirst().orElse(null);
+            if (currentSec == null || !currentSec.getId().equals(req.sectionId())) {
+                Section newSec = sectionRepository.findById(req.sectionId())
+                    .orElseThrow(() -> new IllegalArgumentException("Section not found with id: " + req.sectionId()));
+
+                if (caller.getRole() == com.crre.academicdms.features.user.model.Role.HOD || caller.isHod()) {
+                    com.crre.academicdms.features.academic.model.Department hodDept = hodService.resolveHodDepartment(caller);
+                    if (newSec.getSemester() == null || newSec.getSemester().getProgram() == null
+                        || newSec.getSemester().getProgram().getDepartment() == null
+                        || !newSec.getSemester().getProgram().getDepartment().getId().equals(hodDept.getId())) {
+                        throw new org.springframework.security.access.AccessDeniedException("HOD cannot move student to a section outside their department");
+                    }
+                }
+
+                for (StudentEnrollment se : enrollments) {
+                    se.setCurrent(false);
+                }
+                enrollmentRepository.saveAll(enrollments);
+
+                StudentEnrollment newEnrollment = new StudentEnrollment(student, newSec, true);
+                enrollmentRepository.save(newEnrollment);
+            }
+        }
+
+        studentRepository.save(student);
+        if (studentUser != null) {
+            userRepository.save(studentUser);
+        }
+
+        return getStudentDetails(student.getId().toString(), caller);
     }
 }

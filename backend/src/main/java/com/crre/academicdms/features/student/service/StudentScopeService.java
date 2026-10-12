@@ -168,6 +168,54 @@ public class StudentScopeService {
         return counsellingAssignmentRepository.existsByCounsellorIdAndStudentIdAndStatus(caller.getId(), student.getId(), "ACTIVE");
     }
 
+    /**
+     * Authoritative check whether caller is authorized to edit a student's profile and academic data.
+     */
+    @Transactional(readOnly = true)
+    public boolean canEditStudent(Student student, UserPrincipal caller) {
+        if (caller == null || student == null) {
+            return false;
+        }
+
+        Role role = caller.getRole();
+        if (role == Role.STUDENT) {
+            return false;
+        }
+
+        if (role == Role.ADMIN || role == Role.PRINCIPAL) {
+            return true;
+        }
+
+        Optional<StudentEnrollment> activeEnrollment = enrollmentRepository.findByStudentIdAndCurrentTrue(student.getId());
+        Section section = activeEnrollment.map(StudentEnrollment::getSection).orElse(null);
+
+        if (role == Role.HOD || caller.isHod()) {
+            Department hodDept = hodService.resolveHodDepartment(caller);
+            if (section != null && section.getSemester() != null
+                && section.getSemester().getProgram() != null
+                && section.getSemester().getProgram().getDepartment() != null) {
+                return section.getSemester().getProgram().getDepartment().getId().equals(hodDept.getId());
+            }
+            return false;
+        }
+
+        // Faculty: Class teacher of section, Teaching faculty of section, or assigned Counsellor
+        if (section != null) {
+            if (responsibilityRepository.existsActiveSectionRole(caller.getId(), "CLASS_TEACHER", section.getId())) {
+                return true;
+            }
+            if (responsibilityRepository.existsByUserIdAndTypeAndSectionIdAndStatus(caller.getId(), "TEACHING", section.getId(), "ACTIVE")) {
+                return true;
+            }
+        }
+
+        if (counsellingAssignmentRepository.existsByCounsellorIdAndStudentIdAndStatus(caller.getId(), student.getId(), "ACTIVE")) {
+            return true;
+        }
+
+        return false;
+    }
+
     @Transactional(readOnly = true)
     public List<StudentDto> getAccessibleStudents(UUID sectionId, UserPrincipal caller) {
         if (sectionId == null) {

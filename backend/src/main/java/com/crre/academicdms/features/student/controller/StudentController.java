@@ -69,4 +69,14 @@ public class StudentController {
         StudentDetailDto details = studentService.getStudentDetails(studentId, caller);
         return ResponseEntity.ok(ApiResponse.success("Student details retrieved successfully", details));
     }
+
+    @org.springframework.web.bind.annotation.PutMapping("/{studentId}")
+    public ResponseEntity<ApiResponse<StudentDetailDto>> updateStudent(
+        @PathVariable String studentId,
+        @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.crre.academicdms.features.student.dto.UpdateStudentRequest request,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        StudentDetailDto updated = studentService.updateStudent(studentId, request, caller);
+        return ResponseEntity.ok(ApiResponse.success("Student updated successfully", updated));
+    }
 }
