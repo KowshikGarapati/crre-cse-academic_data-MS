@@ -436,7 +436,7 @@ export const ProfilePage: React.FC = () => {
                       )}
                       {r.sectionName && (
                         <div className="text-slate-600">
-                          Section: <strong className="text-slate-800">{r.sectionName}</strong>
+                          Branch & Section: <strong className="text-slate-800">{r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}{r.sectionName}</strong>
                         </div>
                       )}
                       {r.departmentName && (

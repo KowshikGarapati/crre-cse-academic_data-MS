@@ -40,6 +40,7 @@ public class FacultyDtos {
     public record MyClassDto(
         UUID sectionId,
         String sectionName,
+        String programCode,
         String programName,
         String semesterName,
         String subjectCode,

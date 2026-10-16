@@ -300,7 +300,7 @@ export const DashboardPage: React.FC = () => {
                     className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 text-xs font-medium border border-indigo-400/30"
                   >
                     <Award className="w-3 h-3" />
-                    {r.type.replace('_', ' ')} {r.sectionName ? `(${r.sectionName})` : ''}
+                    {r.type.replace('_', ' ')} {r.sectionName ? `(${r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}${r.sectionName})` : ''}
                   </span>
                 ))}
               </div>

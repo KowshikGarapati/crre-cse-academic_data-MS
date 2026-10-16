@@ -88,15 +88,17 @@ public class FacultyService {
             caller.getId(), "TEACHING", "ACTIVE"
         );
 
-        Map<UUID, MyClassDto> classMap = new LinkedHashMap<>();
+        Map<String, MyClassDto> classMap = new LinkedHashMap<>();
         for (Responsibility r : teaching) {
             if (r.getSection() != null && r.getSubject() != null) {
                 Section sec = r.getSection();
                 Subject sub = r.getSubject();
                 long count = enrollmentRepository.findBySectionId(sec.getId()).size();
-                classMap.put(sec.getId(), new MyClassDto(
+                String key = sec.getId().toString() + "-" + sub.getId().toString();
+                classMap.put(key, new MyClassDto(
                     sec.getId(),
                     sec.getSectionName(),
+                    sec.getSemester().getProgram().getCode(),
                     sec.getSemester().getProgram().getName(),
                     sec.getSemester().getTermName(),
                     sub.getCode(),

@@ -134,7 +134,7 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
         ensureAllStudentsHaveUsers();
 
         boolean needSeedStudents = studentRepository.count() < 720;
-        log.info("Initializing/verifying CRRE Academic DMS V2.2 Dataset (CSE Department, 4 Programs, 10 Sections, 15 Faculty, conflict-free Timetable)...");
+        log.info("Initializing/verifying CRRE Academic DMS V2.2 Dataset (CSE Department, 4 Programs, 10 Sections, 35 Faculty, conflict-free Timetable)...");
 
         // 1. Institution & Department
         Institution institution = institutionRepository.findByCode("CRRE")
@@ -182,7 +182,7 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
         programSubjectsMap.put(csProgram.getId(), seedProgramSubjects(csProgram, csSem));
         programSubjectsMap.put(cseProgram.getId(), seedProgramSubjects(cseProgram, cseSem));
 
-        // 7. Seed 15 Faculty Members & Profiles
+        // 7. Seed 35 Faculty Members & Profiles
         List<User> facultyUsers = seedFacultyMembers(cseDept);
 
         // 8. Assign Class Teachers (10 sections -> 10 designated faculty)
@@ -199,10 +199,10 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
             allStudents = studentRepository.findAll();
         }
 
-        // 11. Counselling Assignments (Distribute students across 15 faculty counsellors)
+        // 11. Counselling Assignments (Distribute students across faculty counsellors)
         seedCounselling(allStudents, facultyUsers);
 
-        log.info("Synthetic dataset verification/generation complete! 10 sections, {} students, 15 faculty members with full curriculum and conflict-free timetables.", allStudents.size());
+        log.info("Synthetic dataset verification/generation complete! 10 sections, {} students, 35 faculty members with full curriculum and conflict-free timetables.", allStudents.size());
     }
 
     private Program getOrCreateProgram(Department dept, String code, String name) {
@@ -526,8 +526,19 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
     }
 
     private List<User> seedFacultyMembers(Department dept) {
-        // 15 Faculty accounts
-        // HOD, Rama Lakshmi, Rajesh Kumar, Naga Lakshmi + 11 more
+        // 1. Clean up test faculty members
+        List<User> testUsers = userRepository.findAll().stream()
+            .filter(u -> u.getRole() == Role.FACULTY && (
+                (u.getFullName() != null && u.getFullName().contains("Test"))
+                || (u.getUsername() != null && u.getUsername().startsWith("fac."))
+            ))
+            .toList();
+        if (!testUsers.isEmpty()) {
+            userRepository.deleteAll(testUsers);
+            userRepository.flush();
+        }
+
+        // 35 Faculty accounts
         FacultyData[] facultyDefs = {
             new FacultyData("hod.cse", "FAC-CSE-001", "Dr. M. Sreenivasa Rao", Role.FACULTY, "Professor & HOD", "Ph.D (Computer Science)", "Computer Networks & High Performance Computing", "22 Years Academic Leadership", "hod.cse@crre.edu"),
             new FacultyData("ramalakshmi", "FAC-CSE-002", "CH. Rama Lakshmi", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Discrete Mathematics & Graph Theory", "8 Years Teaching & Academic Mentorship", "ramalakshmi@crre.edu"),
@@ -543,7 +554,27 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
             new FacultyData("FAC-CSE-012", "FAC-CSE-012", "Smt. M. Geetha", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Formal Languages & Automata Theory", "7 Years Experience", "m.geetha@crre.edu"),
             new FacultyData("FAC-CSE-013", "FAC-CSE-013", "Dr. N. V. Rao", Role.FACULTY, "Professor", "Ph.D (CSE)", "Data Mining & Information Retrieval", "20 Years Experience", "nv.rao@crre.edu"),
             new FacultyData("FAC-CSE-014", "FAC-CSE-014", "Sri P. Kishore", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Machine Learning & Scientific Computing", "5 Years Experience", "p.kishore@crre.edu"),
-            new FacultyData("FAC-CSE-015", "FAC-CSE-015", "Smt. S. Anitha", Role.FACULTY, "Assistant Professor", "M.Tech (VLSI)", "Digital Electronics & Embedded Logic", "8 Years Experience", "s.anitha@crre.edu")
+            new FacultyData("FAC-CSE-015", "FAC-CSE-015", "Smt. S. Anitha", Role.FACULTY, "Assistant Professor", "M.Tech (VLSI)", "Digital Electronics & Embedded Logic", "8 Years Experience", "s.anitha@crre.edu"),
+            new FacultyData("FAC-CSE-016", "FAC-CSE-016", "Sri V. Mohan Krishna", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Computer Organization & Embedded Systems", "6 Years Experience", "v.mohankrishna@crre.edu"),
+            new FacultyData("FAC-CSE-017", "FAC-CSE-017", "Dr. Y. Srinivasa Reddy", Role.FACULTY, "Associate Professor", "Ph.D (CSE)", "Digital Logic & Microprocessors", "13 Years Experience", "y.srinivasareddy@crre.edu"),
+            new FacultyData("FAC-CSE-018", "FAC-CSE-018", "Smt. K. Vijaya Lakshmi", Role.FACULTY, "Assistant Professor", "M.Tech (ECE)", "VLSI Design & Digital Electronics", "9 Years Experience", "k.vijayalakshmi@crre.edu"),
+            new FacultyData("FAC-CSE-019", "FAC-CSE-019", "Sri T. Ravi Teja", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Computer Architecture & Parallel Systems", "7 Years Experience", "t.raviteja@crre.edu"),
+            new FacultyData("FAC-CSE-020", "FAC-CSE-020", "Dr. P. Sreedhar", Role.FACULTY, "Associate Professor", "Ph.D (CSE)", "Hardware Security & Computer Systems", "12 Years Experience", "p.sreedhar@crre.edu"),
+            new FacultyData("FAC-CSE-021", "FAC-CSE-021", "Dr. A. Sudheer Kumar", Role.FACULTY, "Associate Professor", "Ph.D (Humanities & Ethics)", "Universal Human Values & Professional Ethics", "15 Years Experience", "a.sudheerkumar@crre.edu"),
+            new FacultyData("FAC-CSE-022", "FAC-CSE-022", "Smt. L. Radhika", Role.FACULTY, "Assistant Professor", "M.A., M.Phil", "Value Education & Human Relations", "8 Years Experience", "l.radhika@crre.edu"),
+            new FacultyData("FAC-CSE-023", "FAC-CSE-023", "Sri G. Kalyan Chakravarthy", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Social & Ethical Aspects in Computing", "6 Years Experience", "g.kalyanchakravarthy@crre.edu"),
+            new FacultyData("FAC-CSE-024", "FAC-CSE-024", "Dr. B. Indira Priyadarshini", Role.FACULTY, "Associate Professor", "Ph.D (Management)", "Human Values, Ethics & Organizational Behavior", "11 Years Experience", "b.indirapriyadarshini@crre.edu"),
+            new FacultyData("FAC-CSE-025", "FAC-CSE-025", "Sri M. Ramana Murthy", Role.FACULTY, "Assistant Professor", "M.Sc., M.Phil", "Professional Ethics & Value Systems", "10 Years Experience", "m.ramanamurthy@crre.edu"),
+            new FacultyData("FAC-CSE-026", "FAC-CSE-026", "Sri N. Pradeep Kumar", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Algorithms Laboratory & Problem Solving", "5 Years Experience", "n.pradeepkumar@crre.edu"),
+            new FacultyData("FAC-CSE-027", "FAC-CSE-027", "Smt. V. Sandhya Rani", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Data Structures Lab & Competitive Programming", "7 Years Experience", "v.sandhyarani@crre.edu"),
+            new FacultyData("FAC-CSE-028", "FAC-CSE-028", "Sri D. Sai Praneeth", Role.FACULTY, "Assistant Professor", "M.Tech (AI & DS)", "Algorithms Engineering & Practical Labs", "4 Years Experience", "d.saipraneeth@crre.edu"),
+            new FacultyData("FAC-CSE-029", "FAC-CSE-029", "Dr. C. Harish Babu", Role.FACULTY, "Associate Professor", "Ph.D (CSE)", "Data Structures & Experimental Computing", "10 Years Experience", "c.harishbabu@crre.edu"),
+            new FacultyData("FAC-CSE-030", "FAC-CSE-030", "Smt. R. Swetha", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Programming Laboratories & Algorithmic Design", "6 Years Experience", "r.swetha@crre.edu"),
+            new FacultyData("FAC-CSE-031", "FAC-CSE-031", "Sri K. Subba Rao", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Java Enterprise Applications & Systems Lab", "8 Years Experience", "k.subbarao@crre.edu"),
+            new FacultyData("FAC-CSE-032", "FAC-CSE-032", "Smt. P. Jyotsna", Role.FACULTY, "Assistant Professor", "M.Tech (IT)", "Object-Oriented Programming Practicals", "6 Years Experience", "p.jyotsna@crre.edu"),
+            new FacultyData("FAC-CSE-033", "FAC-CSE-033", "Sri S. Venkateswara Rao", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Java Programming & Software Tooling", "7 Years Experience", "s.venkateswararao@crre.edu"),
+            new FacultyData("FAC-CSE-034", "FAC-CSE-034", "Dr. M. Bharathi", Role.FACULTY, "Associate Professor", "Ph.D (CSE)", "Object Technologies & Development Labs", "12 Years Experience", "m.bharathi@crre.edu"),
+            new FacultyData("FAC-CSE-035", "FAC-CSE-035", "Sri E. Chandra Sekhar", Role.FACULTY, "Assistant Professor", "M.Tech (CSE)", "Java Frameworks & Practical Programming", "5 Years Experience", "e.chandrasekhar@crre.edu")
         };
 
         List<User> users = new ArrayList<>();
@@ -573,16 +604,29 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
             final User u = user;
             facultyProfileRepository.findByUserId(u.getId())
                 .or(() -> facultyProfileRepository.findByEmployeeNumber(fd.employeeNumber))
-                .orElseGet(() -> facultyProfileRepository.save(new FacultyProfile(
-                    u,
-                    fd.employeeNumber,
-                    dept,
-                    fd.designation,
-                    fd.qualification,
-                    fd.specialization,
-                    fd.experience,
-                    fd.institutionalContact
-                )));
+                .ifPresentOrElse(
+                    prof -> {
+                        prof.setUser(u);
+                        prof.setDepartment(dept);
+                        prof.setDesignation(fd.designation);
+                        prof.setQualification(fd.qualification);
+                        prof.setSpecialization(fd.specialization);
+                        prof.setProfessionalExperience(fd.experience);
+                        prof.setInstitutionalContact(fd.institutionalContact);
+                        prof.setActiveStatus(true);
+                        facultyProfileRepository.save(prof);
+                    },
+                    () -> facultyProfileRepository.save(new FacultyProfile(
+                        u,
+                        fd.employeeNumber,
+                        dept,
+                        fd.designation,
+                        fd.qualification,
+                        fd.specialization,
+                        fd.experience,
+                        fd.institutionalContact
+                    ))
+                );
         }
 
         // Assign HOD Responsibility
@@ -615,6 +659,9 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
                 Responsibility r = existing.get();
                 if (!r.getUser().getId().equals(ct.getId())) {
                     r.setUser(ct);
+                }
+                if (r.getProgram() == null) {
+                    r.setProgram(sec.getSemester().getProgram());
                 }
                 if (r.getAcademicYear() == null || r.getSemester() == null) {
                     r.setAcademicYear(sec.getSemester().getAcademicYear());
@@ -662,64 +709,60 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
             {4, 0}  // Sec 4: Fri (Lab 1), Mon (Lab 2)
         };
 
-        // Step 1: Resolve 7 active TEACHING responsibilities per section with dedicated faculty
+        // 35 Teachers mapped across 7 subjects and 5 section pairs (each teacher has exactly 2 sections, 0 clashes)
+        final int[][] TEACHER_MAPPING = {
+            {1, 0, 3, 4, 5},      // CS301 (DMGT)
+            {2, 6, 7, 8, 9},      // CS302 (DSA) - faculty.cse (index 2) gets Pair 0 (Sec 0 & 1)
+            {10, 11, 12, 13, 14}, // CS303 (OOP Java)
+            {15, 16, 17, 18, 19}, // CS304 (DCO)
+            {20, 21, 22, 23, 24}, // CS305 (UHV)
+            {25, 26, 27, 28, 29}, // CS306L (DSA Lab)
+            {30, 31, 32, 33, 34}  // CS307L (Java Lab)
+        };
+
+        // Step 0: Clean out existing timetable records first so they don't hold FKs to responsibilities
+        timetableRepository.deleteAllInBatch();
+
+        // Step 1: Remove old TEACHING responsibilities to eliminate duplicate assignments and reduce faculty load
+        List<Responsibility> oldTeaching = responsibilityRepository.findAll().stream()
+            .filter(r -> "TEACHING".equals(r.getType()))
+            .toList();
+        if (!oldTeaching.isEmpty()) {
+            responsibilityRepository.deleteAllInBatch(oldTeaching);
+        }
+
+        // Step 2: Create exactly 70 clean TEACHING responsibilities (7 per section, 2 per faculty)
         Map<UUID, Map<Integer, Responsibility>> sectionSubjectRespMap = new HashMap<>();
         for (int sIndex = 0; sIndex < sections.size(); sIndex++) {
             Section section = sections.get(sIndex);
             List<Subject> subjects = programSubjectsMap.get(section.getSemester().getProgram().getId());
             if (subjects == null || subjects.size() < 7) continue;
 
-            int group = sIndex < 5 ? 0 : 1;
+            int pairIdx = sIndex / 2;
             Map<Integer, Responsibility> subjectRespMap = new HashMap<>();
 
             for (int subIdx = 0; subIdx < 7; subIdx++) {
                 Subject sub = subjects.get(subIdx);
-                // Group 0 uses even faculty (0, 2, 4, 6, 8, 10, 12)
-                // Group 1 uses odd faculty (1, 3, 5, 7, 9, 11, 13)
-                int teacherIdx = (group == 0) ? (subIdx * 2) : (subIdx * 2 + 1);
-                User assignedTeacher = facultyUsers.get(teacherIdx % facultyUsers.size());
-                final int finalSubIdx = subIdx;
+                int teacherIdx = TEACHER_MAPPING[subIdx][pairIdx];
+                User assignedTeacher = facultyUsers.get(teacherIdx);
 
-                Responsibility resp = responsibilityRepository
-                    .findFirstByUserIdAndSubjectIdAndSectionIdAndTypeAndStatus(
-                        assignedTeacher.getId(), sub.getId(), section.getId(), "TEACHING", "ACTIVE"
-                    )
-                    .orElseGet(() -> {
-                        Optional<Responsibility> inactive = responsibilityRepository.findAll().stream()
-                            .filter(r -> "TEACHING".equals(r.getType())
-                                && r.getUser().getId().equals(assignedTeacher.getId())
-                                && r.getSubject() != null && r.getSubject().getId().equals(sub.getId())
-                                && r.getSection() != null && r.getSection().getId().equals(section.getId()))
-                            .findFirst();
-                        if (inactive.isPresent()) {
-                            Responsibility r = inactive.get();
-                            r.setStatus("ACTIVE");
-                            r.setAcademicYear(section.getSemester().getAcademicYear());
-                            r.setSemester(section.getSemester());
-                            return responsibilityRepository.save(r);
-                        }
-                        return responsibilityRepository.save(new Responsibility(
-                            assignedTeacher,
-                            "TEACHING",
-                            dept,
-                            section.getSemester().getProgram(),
-                            section.getSemester().getAcademicYear(),
-                            section.getSemester(),
-                            sub,
-                            section,
-                            "Teaching " + sub.getCode() + " in " + section.getSectionName()
-                        ));
-                    });
-
-                subjectRespMap.put(finalSubIdx, resp);
+                Responsibility resp = responsibilityRepository.save(new Responsibility(
+                    assignedTeacher,
+                    "TEACHING",
+                    dept,
+                    section.getSemester().getProgram(),
+                    section.getSemester().getAcademicYear(),
+                    section.getSemester(),
+                    sub,
+                    section,
+                    "Teaching " + sub.getCode() + " in " + section.getSemester().getProgram().getCode() + " " + section.getSectionName()
+                ));
+                subjectRespMap.put(subIdx, resp);
             }
             sectionSubjectRespMap.put(section.getId(), subjectRespMap);
         }
 
-        // Clean out existing timetable records to prevent transient unique constraint collisions
-        timetableRepository.deleteAllInBatch();
-
-        // Step 2: Seed the 42 conflict-free timetable slots for each section (420 slots total)
+        // Step 3: Seed the 42 conflict-free timetable slots for each section (420 slots total)
         List<TimetableEntry> entriesToSave = new ArrayList<>();
         for (int sIndex = 0; sIndex < sections.size(); sIndex++) {
             Section section = sections.get(sIndex);
@@ -727,7 +770,7 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
             if (subjects == null || subjects.size() < 7) continue;
             Map<Integer, Responsibility> subjectRespMap = sectionSubjectRespMap.get(section.getId());
 
-            int group = sIndex < 5 ? 0 : 1;
+            int pairIdx = sIndex / 2;
             int sLocal = sIndex % 5;
             int lab1Day = GROUP_LAB_DAYS[sLocal][0];
             int lab2Day = GROUP_LAB_DAYS[sLocal][1];
@@ -756,8 +799,8 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
                     }
 
                     Subject subject = subjects.get(subIdx);
-                    int teacherIdx = (group == 0) ? (subIdx * 2) : (subIdx * 2 + 1);
-                    User assignedFaculty = facultyUsers.get(teacherIdx % facultyUsers.size());
+                    int teacherIdx = TEACHER_MAPPING[subIdx][pairIdx];
+                    User assignedFaculty = facultyUsers.get(teacherIdx);
                     Responsibility teachingResp = subjectRespMap != null ? subjectRespMap.get(subIdx) : null;
 
                     AcademicPeriod pDef = AcademicPeriod.of(period);

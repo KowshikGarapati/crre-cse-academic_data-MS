@@ -13,6 +13,7 @@ export interface ResponsibilitySummary {
   departmentId?: string | null;
   departmentName?: string | null;
   programId?: string | null;
+  programCode?: string | null;
   programName?: string | null;
   subjectId?: string | null;
   subjectCode?: string | null;
@@ -225,6 +226,7 @@ export interface MySubjectDto {
 export interface MyClassDto {
   sectionId: string;
   sectionName: string;
+  programCode?: string | null;
   programName: string;
   semesterName: string;
   academicYearName: string;

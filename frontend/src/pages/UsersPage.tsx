@@ -766,9 +766,9 @@ export const UsersPage: React.FC = () => {
                                   className="px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
                                 >
                                   {r.type === 'CLASS_TEACHER'
-                                    ? `Class Teacher (${r.sectionName || 'Sec 1'})`
+                                    ? `Class Teacher (${r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}${r.sectionName || 'Sec 1'})`
                                     : r.type === 'TEACHING'
-                                    ? `${r.subjectCode || 'DMGT'} (${r.sectionName || 'Sec 1'})`
+                                    ? `${r.subjectCode || 'DMGT'} (${r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}${r.sectionName || 'Sec 1'})`
                                     : r.type === 'COUNSELLOR'
                                     ? `Counsellor (${r.assignedStudentCount ?? 0} Mentees)`
                                     : r.type.replace('_', ' ')}
@@ -1567,7 +1567,7 @@ export const UsersPage: React.FC = () => {
                         </div>
                         <div className="text-[11px] text-slate-600 mt-1">
                           {r.subjectName && <span>Subject: <strong>{r.subjectName}</strong> &bull; </span>}
-                          {r.sectionName && <span>Section: <strong>{r.sectionName}</strong> &bull; </span>}
+                          {r.sectionName && <span>Branch & Section: <strong>{r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}{r.sectionName}</strong> &bull; </span>}
                           {r.departmentName && <span>Dept: <strong>{r.departmentName}</strong></span>}
                           {r.type === 'COUNSELLOR' && (
                             <span className="font-semibold text-indigo-700">

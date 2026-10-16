@@ -208,7 +208,7 @@ export const StudentsPage: React.FC = () => {
                       : user.role === 'COUNSELLOR'
                       ? 'Assigned Mentee Students'
                       : isClassTeacher
-                      ? `${sectionOverview?.sectionName || 'My Section'} Enrolled Students`
+                      ? `${sectionOverview?.programName ? `${sectionOverview.programName} - ` : ''}${sectionOverview?.sectionName || 'My Section'} Enrolled Students`
                       : 'My Teaching Students'}
                   </h1>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -221,7 +221,7 @@ export const StudentsPage: React.FC = () => {
                     : (user.role === 'HOD' || isHod)
                     ? 'CSE Department • 4 Programs • 10 Sections • Hierarchical Student Explorer'
                     : isClassTeacher
-                    ? `CSE Department • Dedicated Class Teacher Scope (${sectionOverview?.sectionName || 'Assigned Section'}) • Showing Only Corresponding Section Students`
+                    ? `CSE Department • Dedicated Class Teacher Scope (${sectionOverview?.programName ? `${sectionOverview.programName} - ` : ''}${sectionOverview?.sectionName || 'Assigned Section'}) • Showing Only Corresponding Section Students`
                     : 'CSE Department • Faculty Subject Teaching Scope'}
                 </p>
               </div>
@@ -238,11 +238,11 @@ export const StudentsPage: React.FC = () => {
                     className="p-1.5 border border-teal-300 rounded-md bg-white font-bold text-teal-900 text-xs shadow-2xs"
                   >
                     <option value="MY_SECTION">
-                      ★ My Section: {sectionOverview?.sectionName || 'Assigned'} ({sectionOverview?.totalStudents || students.length} Students)
+                      ★ My Section: {sectionOverview?.programName ? `${sectionOverview.programName} - ` : ''}{sectionOverview?.sectionName || 'Assigned'} ({sectionOverview?.totalStudents || students.length} Students)
                     </option>
                     {myClasses.map((c) => (
-                      <option key={c.sectionId + c.subjectId} value={c.sectionId}>
-                        Teaching: {c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
+                      <option key={c.sectionId + '-' + c.subjectId} value={c.sectionId}>
+                        Teaching: {c.programCode || c.programName ? `${c.programCode || c.programName} - ` : ''}{c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
                       </option>
                     ))}
                     <option value="ALL">All Teaching Sections Combined</option>
@@ -261,8 +261,8 @@ export const StudentsPage: React.FC = () => {
                   >
                     <option value="ALL">All My Teaching Sections ({students.length})</option>
                     {myClasses.map((c) => (
-                      <option key={c.sectionId + c.subjectId} value={c.sectionId}>
-                        {c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
+                      <option key={c.sectionId + '-' + c.subjectId} value={c.sectionId}>
+                        {c.programCode || c.programName ? `${c.programCode || c.programName} - ` : ''}{c.sectionName} - {c.subjectCode} ({c.studentCount} Students)
                       </option>
                     ))}
                   </select>
