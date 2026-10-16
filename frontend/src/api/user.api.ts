@@ -2,8 +2,9 @@ import { request } from './auth.api';
 import type { ApiResponse, CreateUserRequest, UpdateUserRequest, UserSummary } from '../types/auth.types';
 
 export const userApi = {
-  async getAllUsers(): Promise<UserSummary[]> {
-    const res = await request<ApiResponse<UserSummary[]>>('/api/v1/users', {
+  async getAllUsers(role?: string): Promise<UserSummary[]> {
+    const query = role && role !== 'ALL' ? `?role=${encodeURIComponent(role)}` : '';
+    const res = await request<ApiResponse<UserSummary[]>>(`/api/v1/users${query}`, {
       method: 'GET',
     });
     return res.data;

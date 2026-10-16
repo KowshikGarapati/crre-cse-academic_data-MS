@@ -8,6 +8,7 @@ public record ResponsibilitySummaryDto(
     UUID id,
     String type,
     UUID departmentId,
+    String departmentCode,
     String departmentName,
     UUID programId,
     String programCode,
@@ -37,7 +38,7 @@ public record ResponsibilitySummaryDto(
         String status,
         String description
     ) {
-        this(id, type, departmentId, departmentName, programId, null, programName, subjectId, subjectCode, subjectName, sectionId, sectionName, status, description, null, null);
+        this(id, type, departmentId, null, departmentName, programId, null, programName, subjectId, subjectCode, subjectName, sectionId, sectionName, status, description, null, null);
     }
 
     public ResponsibilitySummaryDto(
@@ -57,7 +58,7 @@ public record ResponsibilitySummaryDto(
         UUID userId,
         Integer assignedStudentCount
     ) {
-        this(id, type, departmentId, departmentName, programId, null, programName, subjectId, subjectCode, subjectName, sectionId, sectionName, status, description, userId, assignedStudentCount);
+        this(id, type, departmentId, null, departmentName, programId, null, programName, subjectId, subjectCode, subjectName, sectionId, sectionName, status, description, userId, assignedStudentCount);
     }
 
     public static ResponsibilitySummaryDto fromEntity(Responsibility r) {
@@ -77,6 +78,7 @@ public record ResponsibilitySummaryDto(
             r.getId(),
             r.getType(),
             r.getDepartment() != null ? r.getDepartment().getId() : null,
+            r.getDepartment() != null ? r.getDepartment().getCode() : null,
             r.getDepartment() != null ? r.getDepartment().getName() : null,
             program != null ? program.getId() : null,
             program != null ? program.getCode() : null,

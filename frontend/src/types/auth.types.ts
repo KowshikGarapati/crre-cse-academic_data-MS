@@ -11,6 +11,7 @@ export interface ResponsibilitySummary {
   id: string;
   type: string;
   departmentId?: string | null;
+  departmentCode?: string | null;
   departmentName?: string | null;
   programId?: string | null;
   programCode?: string | null;

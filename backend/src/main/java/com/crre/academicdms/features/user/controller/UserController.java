@@ -26,8 +26,11 @@ public class UserController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<UserSummaryDto>>> getAllUsers(@AuthenticationPrincipal UserPrincipal caller) {
-        List<UserSummaryDto> users = userService.getAllUsers(caller);
+    public ResponseEntity<ApiResponse<List<UserSummaryDto>>> getAllUsers(
+        @RequestParam(required = false) String role,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<UserSummaryDto> users = userService.getAllUsers(role, caller);
         return ResponseEntity.ok(ApiResponse.success("Users retrieved successfully", users));
     }
 

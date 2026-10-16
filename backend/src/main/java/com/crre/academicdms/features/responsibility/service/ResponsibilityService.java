@@ -101,8 +101,27 @@ public class ResponsibilityService {
 
     @Transactional
     public ResponsibilitySummaryDto addResponsibility(UUID userId, ResponsibilityRequest req) {
+        return addResponsibility(userId, req, null);
+    }
+
+    @Transactional
+    public ResponsibilitySummaryDto addResponsibility(UUID userId, ResponsibilityRequest req, UserPrincipal caller) {
+        if (caller != null) {
+            authorizeResponsibilityManagement(userId, req.departmentId(), req.type(), caller);
+        }
+
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + userId));
+
+        // Enforce HOD_DEPT rules: department-scoped, section MUST NOT be specified
+        if ("HOD_DEPT".equalsIgnoreCase(req.type())) {
+            if (req.departmentId() == null) {
+                throw new IllegalArgumentException("Department is required for HOD responsibility");
+            }
+            if (req.sectionId() != null) {
+                throw new IllegalArgumentException("HOD responsibility is department-scoped and must not reference a section");
+            }
+        }
 
         // Enforce duplicate active assignments prevention
         if ("TEACHING".equalsIgnoreCase(req.type()) && req.subjectId() != null && req.sectionId() != null) {
@@ -119,10 +138,11 @@ public class ResponsibilityService {
             }
         }
 
+        boolean isHod = "HOD_DEPT".equalsIgnoreCase(req.type());
         Department department = req.departmentId() != null ? departmentRepository.findById(req.departmentId()).orElse(null) : null;
-        Program program = req.programId() != null ? programRepository.findById(req.programId()).orElse(null) : null;
-        Subject subject = req.subjectId() != null ? subjectRepository.findById(req.subjectId()).orElse(null) : null;
-        Section section = req.sectionId() != null ? sectionRepository.findById(req.sectionId()).orElse(null) : null;
+        Program program = isHod ? null : (req.programId() != null ? programRepository.findById(req.programId()).orElse(null) : null);
+        Subject subject = isHod ? null : (req.subjectId() != null ? subjectRepository.findById(req.subjectId()).orElse(null) : null);
+        Section section = isHod ? null : (req.sectionId() != null ? sectionRepository.findById(req.sectionId()).orElse(null) : null);
 
         String desc = req.description();
         if (desc == null || desc.isBlank()) {
@@ -167,21 +187,44 @@ public class ResponsibilityService {
 
     @Transactional
     public ResponsibilitySummaryDto updateResponsibility(UUID responsibilityId, ResponsibilityRequest req) {
+        return updateResponsibility(responsibilityId, req, null);
+    }
+
+    @Transactional
+    public ResponsibilitySummaryDto updateResponsibility(UUID responsibilityId, ResponsibilityRequest req, UserPrincipal caller) {
         Responsibility r = responsibilityRepository.findById(responsibilityId)
             .orElseThrow(() -> new IllegalArgumentException("Responsibility not found with id: " + responsibilityId));
+
+        if (caller != null) {
+            UUID deptId = r.getDepartment() != null ? r.getDepartment().getId() : req.departmentId();
+            authorizeResponsibilityManagement(r.getUser().getId(), deptId, r.getType(), caller);
+        }
+
+        boolean isHod = "HOD_DEPT".equalsIgnoreCase(r.getType());
+        if (isHod && req.sectionId() != null) {
+            throw new IllegalArgumentException("HOD responsibility is department-scoped and must not reference a section");
+        }
 
         if (req.departmentId() != null) {
             r.setDepartment(departmentRepository.findById(req.departmentId()).orElse(null));
         }
-        if (req.programId() != null) {
-            r.setProgram(programRepository.findById(req.programId()).orElse(null));
+
+        if (isHod) {
+            r.setProgram(null);
+            r.setSubject(null);
+            r.setSection(null);
+        } else {
+            if (req.programId() != null) {
+                r.setProgram(programRepository.findById(req.programId()).orElse(null));
+            }
+            if (req.subjectId() != null) {
+                r.setSubject(subjectRepository.findById(req.subjectId()).orElse(null));
+            }
+            if (req.sectionId() != null) {
+                r.setSection(sectionRepository.findById(req.sectionId()).orElse(null));
+            }
         }
-        if (req.subjectId() != null) {
-            r.setSubject(subjectRepository.findById(req.subjectId()).orElse(null));
-        }
-        if (req.sectionId() != null) {
-            r.setSection(sectionRepository.findById(req.sectionId()).orElse(null));
-        }
+
         if (req.description() != null && !req.description().isBlank()) {
             r.setDescription(req.description());
         }
@@ -196,12 +239,43 @@ public class ResponsibilityService {
 
     @Transactional
     public void removeResponsibility(UUID responsibilityId) {
+        removeResponsibility(responsibilityId, null);
+    }
+
+    @Transactional
+    public void removeResponsibility(UUID responsibilityId, UserPrincipal caller) {
         Responsibility r = responsibilityRepository.findById(responsibilityId)
             .orElseThrow(() -> new IllegalArgumentException("Responsibility not found with id: " + responsibilityId));
+
+        if (caller != null) {
+            UUID deptId = r.getDepartment() != null ? r.getDepartment().getId() : null;
+            authorizeResponsibilityManagement(r.getUser().getId(), deptId, r.getType(), caller);
+        }
 
         // Mark INACTIVE rather than deleting underlying records; this preserves historical integrity
         r.setStatus("INACTIVE");
         responsibilityRepository.save(r);
+    }
+
+    private void authorizeResponsibilityManagement(UUID targetUserId, UUID targetDeptId, String targetRespType, UserPrincipal caller) {
+        if (caller == null) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        Role role = caller.getRole();
+        if (role == Role.ADMIN || role == Role.PRINCIPAL) {
+            return;
+        }
+        if (role == Role.HOD || caller.isHod()) {
+            if ("PRINCIPAL_INSTITUTION".equalsIgnoreCase(targetRespType)) {
+                throw new AccessDeniedException("HOD cannot assign institutional responsibilities");
+            }
+            Department hodDept = hodService.resolveHodDepartment(caller);
+            if (targetDeptId != null && !targetDeptId.equals(hodDept.getId())) {
+                throw new AccessDeniedException("HOD can only manage responsibilities within their department");
+            }
+            return;
+        }
+        throw new AccessDeniedException("You are not authorized to manage academic responsibilities");
     }
 
     @Transactional(readOnly = true)

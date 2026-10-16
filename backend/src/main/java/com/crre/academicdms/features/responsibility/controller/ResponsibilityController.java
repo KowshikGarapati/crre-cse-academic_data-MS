@@ -34,23 +34,29 @@ public class ResponsibilityController {
     @PostMapping("/users/{userId}/responsibilities")
     public ResponseEntity<ApiResponse<ResponsibilitySummaryDto>> addResponsibility(
         @PathVariable UUID userId,
-        @Valid @RequestBody ResponsibilityRequest request
+        @Valid @RequestBody ResponsibilityRequest request,
+        @AuthenticationPrincipal UserPrincipal caller
     ) {
-        ResponsibilitySummaryDto created = responsibilityService.addResponsibility(userId, request);
+        ResponsibilitySummaryDto created = responsibilityService.addResponsibility(userId, request, caller);
         return ResponseEntity.ok(ApiResponse.success("Responsibility assigned successfully", created));
     }
 
     @PutMapping("/responsibilities/{id}")
     public ResponseEntity<ApiResponse<ResponsibilitySummaryDto>> updateResponsibility(
         @PathVariable UUID id,
-        @Valid @RequestBody ResponsibilityRequest request
+        @Valid @RequestBody ResponsibilityRequest request,
+        @AuthenticationPrincipal UserPrincipal caller
     ) {
-        ResponsibilitySummaryDto updated = responsibilityService.updateResponsibility(id, request);
+        ResponsibilitySummaryDto updated = responsibilityService.updateResponsibility(id, request, caller);
         return ResponseEntity.ok(ApiResponse.success("Responsibility updated successfully", updated));
     }
+
     @DeleteMapping("/responsibilities/{id}")
-    public ResponseEntity<ApiResponse<Void>> removeResponsibility(@PathVariable UUID id) {
-        responsibilityService.removeResponsibility(id);
+    public ResponseEntity<ApiResponse<Void>> removeResponsibility(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        responsibilityService.removeResponsibility(id, caller);
         return ResponseEntity.ok(ApiResponse.success("Responsibility removed successfully"));
     }
 

@@ -77,6 +77,11 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public List<UserSummaryDto> getAllUsers(UserPrincipal caller) {
+        return getAllUsers(null, caller);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserSummaryDto> getAllUsers(String roleFilter, UserPrincipal caller) {
         enforceAdminOrHod(caller);
 
         List<User> users;
@@ -107,12 +112,49 @@ public class UserService {
                 .toList();
         }
 
-        return users.stream()
+        List<UserSummaryDto> dtos = users.stream()
             .map(u -> {
                 List<ResponsibilitySummaryDto> resps = responsibilityService.getActiveResponsibilitiesForUser(u.getId());
                 return UserSummaryDto.fromEntity(u, resps);
             })
             .toList();
+
+        if (roleFilter != null && !roleFilter.isBlank() && !"ALL".equalsIgnoreCase(roleFilter)) {
+            String target = roleFilter.trim().toUpperCase();
+            dtos = dtos.stream().filter(u -> matchesRoleFilter(u, target)).toList();
+        }
+
+        return dtos;
+    }
+
+    private boolean matchesRoleFilter(UserSummaryDto u, String target) {
+        if ("HOD".equals(target) || "HOD_DEPT".equals(target)) {
+            return u.role() == Role.HOD ||
+                (u.responsibilities() != null && u.responsibilities().stream()
+                    .anyMatch(r -> "HOD_DEPT".equalsIgnoreCase(r.type()) && "ACTIVE".equalsIgnoreCase(r.status())));
+        }
+        if ("CLASS_TEACHER".equals(target)) {
+            return u.role() == Role.CLASS_TEACHER ||
+                (u.responsibilities() != null && u.responsibilities().stream()
+                    .anyMatch(r -> "CLASS_TEACHER".equalsIgnoreCase(r.type()) && "ACTIVE".equalsIgnoreCase(r.status())));
+        }
+        if ("COUNSELLOR".equals(target)) {
+            return u.role() == Role.COUNSELLOR ||
+                (u.responsibilities() != null && u.responsibilities().stream()
+                    .anyMatch(r -> "COUNSELLOR".equalsIgnoreCase(r.type()) && "ACTIVE".equalsIgnoreCase(r.status())));
+        }
+        if ("FACULTY".equals(target)) {
+            return u.role() == Role.FACULTY;
+        }
+        if ("PRINCIPAL".equals(target) || "PRINCIPAL_INSTITUTION".equals(target)) {
+            return u.role() == Role.PRINCIPAL ||
+                (u.responsibilities() != null && u.responsibilities().stream()
+                    .anyMatch(r -> "PRINCIPAL_INSTITUTION".equalsIgnoreCase(r.type()) && "ACTIVE".equalsIgnoreCase(r.status())));
+        }
+        if ("ADMIN".equals(target)) {
+            return u.role() == Role.ADMIN;
+        }
+        return u.role() != null && u.role().name().equalsIgnoreCase(target);
     }
 
     @Transactional
@@ -332,7 +374,7 @@ public class UserService {
         } else if (req.role() == Role.HOD && req.departmentId() != null) {
             responsibilityService.addResponsibility(
                 savedUser.getId(),
-                new ResponsibilityRequest("HOD_DEPT", req.departmentId(), req.programId(), null, null, null)
+                new ResponsibilityRequest("HOD_DEPT", req.departmentId(), null, null, null, null)
             );
         } else if (req.role() == Role.COUNSELLOR && req.sectionId() != null) {
             responsibilityService.addResponsibility(

@@ -168,10 +168,32 @@ export const UsersPage: React.FC = () => {
     };
   }, []);
 
+  const userMatchesRoleFilter = (u: UserSummary, filter: string): boolean => {
+    if (filter === 'ALL') return true;
+    if (filter === 'HOD') {
+      return u.role === 'HOD' || (u.responsibilities?.some((r) => r.type === 'HOD_DEPT' && r.status === 'ACTIVE') ?? false);
+    }
+    if (filter === 'CLASS_TEACHER') {
+      return u.role === 'CLASS_TEACHER' || (u.responsibilities?.some((r) => r.type === 'CLASS_TEACHER' && r.status === 'ACTIVE') ?? false);
+    }
+    if (filter === 'COUNSELLOR') {
+      return u.role === 'COUNSELLOR' || (u.responsibilities?.some((r) => r.type === 'COUNSELLOR' && r.status === 'ACTIVE') ?? false);
+    }
+    if (filter === 'FACULTY') {
+      return u.role === 'FACULTY';
+    }
+    if (filter === 'ADMIN') {
+      return u.role === 'ADMIN';
+    }
+    if (filter === 'PRINCIPAL') {
+      return u.role === 'PRINCIPAL' || (u.responsibilities?.some((r) => r.type === 'PRINCIPAL_INSTITUTION' && r.status === 'ACTIVE') ?? false);
+    }
+    return u.role === filter;
+  };
+
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      const matchesRole =
-        selectedRoleFilter === 'ALL' || u.role === selectedRoleFilter;
+      const matchesRole = userMatchesRoleFilter(u, selectedRoleFilter);
       const q = search.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -394,11 +416,13 @@ export const UsersPage: React.FC = () => {
       const cseDept = metadata?.departments.find((d) => d.code === 'CSE') || metadata?.departments[0];
       const aimlProg = metadata?.programs.find((p) => p.code === 'AIML') || metadata?.programs[0];
       const sec1 = metadata?.sections.find((s) => s.sectionName.includes('1')) || metadata?.sections[0];
+      const isHodUser = u.role === 'HOD' || (u.responsibilities?.some((r) => r.type === 'HOD_DEPT' && r.status === 'ACTIVE') ?? false);
+      const initialType = isHodUser ? 'HOD_DEPT' : u.role === 'COUNSELLOR' ? 'COUNSELLOR' : 'TEACHING';
       setRespForm({
-        type: u.role === 'HOD' ? 'HOD_DEPT' : u.role === 'COUNSELLOR' ? 'COUNSELLOR' : 'TEACHING',
+        type: initialType,
         departmentId: cseDept?.id,
-        programId: aimlProg?.id,
-        sectionId: sec1?.id,
+        programId: initialType === 'HOD_DEPT' ? undefined : aimlProg?.id,
+        sectionId: initialType === 'HOD_DEPT' ? undefined : sec1?.id,
       });
     } catch (err) {
       console.error('Failed to load user responsibilities', err);
@@ -414,8 +438,12 @@ export const UsersPage: React.FC = () => {
     setRespError(null);
     setIsSubmittingResp(true);
     try {
+      const isHod = respForm.type === 'HOD_DEPT';
       const payload: ResponsibilityRequest = {
         ...respForm,
+        sectionId: isHod ? undefined : respForm.sectionId,
+        programId: isHod ? undefined : respForm.programId,
+        subjectId: isHod ? undefined : respForm.subjectId,
         studentIds: respForm.type === 'COUNSELLOR' ? newCounsellorSelectedStudentIds : undefined,
       } as ResponsibilityRequest;
 
@@ -690,20 +718,31 @@ export const UsersPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-500 font-medium">Role:</label>
+            <label className="text-xs text-slate-500 font-medium">Role Filter:</label>
             <select
               value={selectedRoleFilter}
               onChange={(e) => setSelectedRoleFilter(e.target.value)}
-              className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
             >
-              <option value="ALL">All Roles</option>
-              <option value="PRINCIPAL">PRINCIPAL</option>
-              <option value="HOD">HOD</option>
-              <option value="FACULTY">FACULTY</option>
-              <option value="CLASS_TEACHER">CLASS_TEACHER</option>
-              <option value="COUNSELLOR">COUNSELLOR</option>
-              <option value="STUDENT">STUDENT</option>
-              <option value="ADMIN">ADMIN</option>
+              {currentUser?.role === 'HOD' || isUserHod(currentUser) ? (
+                <>
+                  <option value="ALL">All Department Roles</option>
+                  <option value="FACULTY">Faculty (Base)</option>
+                  <option value="HOD">Head of Department (HOD)</option>
+                  <option value="CLASS_TEACHER">Class Teacher</option>
+                  <option value="COUNSELLOR">Counsellor</option>
+                </>
+              ) : (
+                <>
+                  <option value="ALL">All Institutional Roles</option>
+                  <option value="FACULTY">Faculty (Base)</option>
+                  <option value="HOD">Head of Department (HOD)</option>
+                  <option value="CLASS_TEACHER">Class Teacher</option>
+                  <option value="COUNSELLOR">Counsellor</option>
+                  <option value="PRINCIPAL">Principal</option>
+                  <option value="ADMIN">System Administrator</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -771,6 +810,8 @@ export const UsersPage: React.FC = () => {
                                     ? `${r.subjectCode || 'DMGT'} (${r.programCode || r.programName ? `${r.programCode || r.programName} - ` : ''}${r.sectionName || 'Sec 1'})`
                                     : r.type === 'COUNSELLOR'
                                     ? `Counsellor (${r.assignedStudentCount ?? 0} Mentees)`
+                                    : r.type === 'HOD_DEPT'
+                                    ? `HOD (${r.departmentCode || r.departmentName || 'Dept'})`
                                     : r.type.replace('_', ' ')}
                                 </span>
                               ))}
@@ -1647,7 +1688,19 @@ export const UsersPage: React.FC = () => {
                   </label>
                   <select
                     value={respForm.type}
-                    onChange={(e) => setRespForm({ ...respForm, type: e.target.value })}
+                    onChange={(e) => {
+                      const nextType = e.target.value;
+                      const isHodType = nextType === 'HOD_DEPT';
+                      const sec1 = metadata?.sections.find((s) => s.sectionName.includes('1')) || metadata?.sections[0];
+                      const aimlProg = metadata?.programs.find((p) => p.code === 'AIML') || metadata?.programs[0];
+                      setRespForm((prev) => ({
+                        ...prev,
+                        type: nextType,
+                        sectionId: isHodType ? undefined : (prev.sectionId || sec1?.id),
+                        programId: isHodType ? undefined : (prev.programId || aimlProg?.id),
+                        subjectId: isHodType ? undefined : prev.subjectId,
+                      }));
+                    }}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded bg-white font-semibold"
                   >
                     <option value="TEACHING">TEACHING (Subject & Section)</option>
