@@ -152,26 +152,33 @@ public class HodService {
         List<FacultyProfile> facultyProfiles = facultyProfileRepository.findByDepartmentId(dept.getId());
         List<FacultyProfileDto> facultyDtos = facultyProfiles.stream()
             .map(fp -> {
-                List<Responsibility> resps = responsibilityRepository.findByUserIdAndTypeAndStatus(
-                    fp.getUser().getId(), null, "ACTIVE"
-                );
-                List<String> roleLabels = resps.stream()
-                    .map(r -> {
-                        if ("CLASS_TEACHER".equals(r.getType()) && r.getSection() != null) {
-                            return "Class Teacher (" + r.getSection().getSectionName() + ")";
-                        } else if ("TEACHING".equals(r.getType()) && r.getSubject() != null) {
-                            return r.getSubject().getCode() + " (" + (r.getSection() != null ? r.getSection().getSectionName() : "") + ")";
-                        } else {
-                            return r.getType().replace('_', ' ');
-                        }
-                    })
-                    .toList();
+                List<String> roleLabels = List.of();
+                if (fp.getUser() != null) {
+                    List<Responsibility> resps = responsibilityRepository.findByUserIdAndTypeAndStatus(
+                        fp.getUser().getId(), null, "ACTIVE"
+                    );
+                    roleLabels = resps.stream()
+                        .map(r -> {
+                            if ("CLASS_TEACHER".equals(r.getType()) && r.getSection() != null) {
+                                return "Class Teacher (" + r.getSection().getSectionName() + ")";
+                            } else if ("TEACHING".equals(r.getType()) && r.getSubject() != null) {
+                                return r.getSubject().getCode() + " (" + (r.getSection() != null ? r.getSection().getSectionName() : "") + ")";
+                            } else {
+                                return r.getType().replace('_', ' ');
+                            }
+                        })
+                        .toList();
+                }
+
+                UUID uId = fp.getUser() != null ? fp.getUser().getId() : null;
+                String fullName = fp.getFacultyName();
+                String email = fp.getUser() != null ? fp.getUser().getEmail() : null;
 
                 return new FacultyProfileDto(
                     fp.getId(),
-                    fp.getUser().getId(),
-                    fp.getUser().getFullName(),
-                    fp.getUser().getEmail(),
+                    uId,
+                    fullName,
+                    email,
                     fp.getEmployeeNumber(),
                     dept.getId(),
                     dept.getName(),
@@ -181,7 +188,9 @@ public class HodService {
                     fp.getProfessionalExperience(),
                     fp.getInstitutionalContact(),
                     fp.isActiveStatus(),
-                    roleLabels
+                    roleLabels,
+                    fp.getSourceUrl(),
+                    fp.isSynthetic()
                 );
             })
             .toList();

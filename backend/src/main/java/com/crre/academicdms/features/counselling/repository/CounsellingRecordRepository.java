@@ -11,5 +11,6 @@ import java.util.UUID;
 public interface CounsellingRecordRepository extends JpaRepository<CounsellingRecord, UUID> {
     List<CounsellingRecord> findByCounsellorIdOrderByMeetingDateDesc(UUID counsellorUserId);
     List<CounsellingRecord> findByStudentIdOrderByMeetingDateDesc(UUID studentId);
+    void deleteByStudentId(UUID studentId);
     List<CounsellingRecord> findByCounsellorIdAndStudentIdOrderByMeetingDateDesc(UUID counsellorUserId, UUID studentId);
 }

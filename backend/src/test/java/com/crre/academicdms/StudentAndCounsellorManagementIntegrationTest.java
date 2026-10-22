@@ -81,7 +81,10 @@ class StudentAndCounsellorManagementIntegrationTest {
     void authorizedHod_canUpdateStudentData() throws Exception {
         MockHttpSession hodSession = loginAs("hod.cse", "Admin@123");
 
-        Student student = studentRepository.findAll().get(0);
+        Student student = studentRepository.findAll().stream()
+            .filter(s -> s.getUser() != null)
+            .findFirst()
+            .orElseThrow();
         String studentId = student.getId().toString();
 
         UpdateStudentRequest updateReq = new UpdateStudentRequest(
@@ -122,7 +125,10 @@ class StudentAndCounsellorManagementIntegrationTest {
     void studentRole_isDeniedFromEditingStudent() throws Exception {
         MockHttpSession studentSession = loginAs("25B81A4201", "Student@123");
 
-        Student student = studentRepository.findAll().get(0);
+        Student student = studentRepository.findAll().stream()
+            .filter(s -> s.getUser() != null)
+            .findFirst()
+            .orElseThrow();
 
         UpdateStudentRequest updateReq = new UpdateStudentRequest(
             "Malicious Student Update",
@@ -149,7 +155,10 @@ class StudentAndCounsellorManagementIntegrationTest {
     void updateStudent_validationFailsOnInvalidCategories() throws Exception {
         MockHttpSession hodSession = loginAs("hod.cse", "Admin@123");
 
-        Student student = studentRepository.findAll().get(0);
+        Student student = studentRepository.findAll().stream()
+            .filter(s -> s.getUser() != null)
+            .findFirst()
+            .orElseThrow();
 
         UpdateStudentRequest invalidReq = new UpdateStudentRequest(
             "Valid Name",

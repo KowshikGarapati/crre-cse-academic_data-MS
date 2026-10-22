@@ -13,4 +13,7 @@ public interface FacultyProfileRepository extends JpaRepository<FacultyProfile, 
     Optional<FacultyProfile> findByUserId(UUID userId);
     Optional<FacultyProfile> findByEmployeeNumber(String employeeNumber);
     List<FacultyProfile> findByDepartmentId(UUID departmentId);
+    List<FacultyProfile> findByDepartmentIdAndActiveStatusTrue(UUID departmentId);
+    List<FacultyProfile> findByIsSyntheticFalse();
+    List<FacultyProfile> findByDepartmentIdAndIsSyntheticFalse(UUID departmentId);
 }

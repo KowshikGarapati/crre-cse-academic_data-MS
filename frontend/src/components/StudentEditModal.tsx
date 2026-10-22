@@ -15,6 +15,7 @@ import {
   Mail,
   User,
   Shield,
+  Lock,
 } from 'lucide-react';
 
 interface StudentEditModalProps {
@@ -48,24 +49,30 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
   const [aadharNumber, setAadharNumber] = useState<string>('');
   const [apaarNumber, setApaarNumber] = useState<string>('');
   const [sectionId, setSectionId] = useState<string>('');
+  const [initialSectionId, setInitialSectionId] = useState<string>('');
   const [status, setStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
   const [registrationNumber, setRegistrationNumber] = useState<string>('');
+  const [reassignmentReason, setReassignmentReason] = useState<string>('');
 
   useEffect(() => {
     if (!isOpen || !studentId) return;
 
     setError(null);
     setSuccess(null);
+    setReassignmentReason('');
 
     const populateForm = (data: StudentDetailDto) => {
       setFullName(data.fullName || '');
       setEmail(data.email || '');
-      setEntryType((data.entryType as 'REGULAR' | 'LATERAL') || 'REGULAR');
+      const eType = (data.entryType as 'REGULAR' | 'LATERAL') || 'REGULAR';
+      setEntryType(eType);
       setAdmissionCategory((data.admissionCategory as 'CONVENOR' | 'MANAGEMENT') || '');
       setTuitionCategory((data.tuitionCategory as 'RTF' | 'SELF_FINANCE') || '');
       setAadharNumber(data.aadharNumber ? String(data.aadharNumber) : '');
       setApaarNumber(data.apaarNumber ? String(data.apaarNumber) : '');
-      setSectionId(data.placement?.sectionId || '');
+      const sec = data.placement?.sectionId || '';
+      setSectionId(sec);
+      setInitialSectionId(sec);
       setStatus((data.status as 'ACTIVE' | 'INACTIVE') || 'ACTIVE');
       setRegistrationNumber(data.registrationNumber || '');
     };
@@ -90,6 +97,8 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isSectionChanged = entryType === 'LATERAL' && sectionId && sectionId !== initialSectionId;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -111,20 +120,28 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
       return;
     }
 
-    const payload: UpdateStudentRequest = {
-      fullName: trimmedName,
-      email: email.trim() || undefined,
-      entryType,
-      admissionCategory: admissionCategory ? admissionCategory : null,
-      tuitionCategory: tuitionCategory ? tuitionCategory : null,
-      aadharNumber: aadharNumber.trim() ? Number(aadharNumber.trim()) : null,
-      apaarNumber: apaarNumber.trim() ? Number(apaarNumber.trim()) : null,
-      sectionId: sectionId || null,
-      status,
-    };
-
     setSubmitting(true);
     try {
+      // If lateral student section has changed, call dedicated lateral reassignment endpoint
+      if (isSectionChanged) {
+        await studentApi.reassignLateralSection(studentId, {
+          targetSectionId: sectionId,
+          reason: reassignmentReason.trim() || 'Lateral student section reallocation',
+        });
+      }
+
+      const payload: UpdateStudentRequest = {
+        fullName: trimmedName,
+        email: email.trim() || undefined,
+        entryType, // Preserve fixed entry type
+        admissionCategory: admissionCategory ? admissionCategory : null,
+        tuitionCategory: tuitionCategory ? tuitionCategory : null,
+        aadharNumber: aadharNumber.trim() ? Number(aadharNumber.trim()) : null,
+        apaarNumber: apaarNumber.trim() ? Number(apaarNumber.trim()) : null,
+        sectionId: entryType === 'LATERAL' ? (sectionId || null) : initialSectionId,
+        status,
+      };
+
       const updated = await studentApi.updateStudent(studentId, payload);
       setSuccess('Student profile updated successfully.');
       onSaved(updated);
@@ -222,17 +239,25 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             {/* Academic Admission & Tuition Classification */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Entry Type *
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Entry Type</span>
+                  {entryType === 'REGULAR' && (
+                    <span className="text-[10px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      FIXED
+                    </span>
+                  )}
+                  {entryType === 'LATERAL' && (
+                    <span className="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                      REASSIGNABLE
+                    </span>
+                  )}
                 </label>
-                <select
+                <input
+                  type="text"
+                  readOnly
                   value={entryType}
-                  onChange={(e) => setEntryType(e.target.value as 'REGULAR' | 'LATERAL')}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
-                >
-                  <option value="REGULAR">REGULAR</option>
-                  <option value="LATERAL">LATERAL</option>
-                </select>
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-100 font-bold text-slate-700 cursor-not-allowed text-xs"
+                />
               </div>
 
               <div>
@@ -310,13 +335,25 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
             {/* Section & Status */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                  <Building className="w-3.5 h-3.5 text-slate-400" /> Academic Section
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Building className="w-3.5 h-3.5 text-slate-400" /> Academic Section
+                  </span>
+                  {entryType === 'REGULAR' && (
+                    <span className="text-[10px] text-amber-700 font-semibold flex items-center gap-0.5">
+                      <Lock className="w-3 h-3" /> Locked
+                    </span>
+                  )}
                 </label>
                 <select
+                  disabled={entryType === 'REGULAR'}
                   value={sectionId}
                   onChange={(e) => setSectionId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white"
+                  className={`w-full px-3 py-2 border rounded-lg ${
+                    entryType === 'REGULAR'
+                      ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed'
+                      : 'bg-white border-slate-300 focus:ring-2 focus:ring-indigo-500'
+                  }`}
                 >
                   <option value="">Keep Current Section</option>
                   {metadata?.sections?.map((sec) => (
@@ -325,9 +362,17 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                     </option>
                   ))}
                 </select>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Re-assigning section adjusts the student's timetable and class teacher scope.
-                </p>
+                {entryType === 'REGULAR' ? (
+                  <div className="mt-1.5 p-2 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px] leading-tight flex items-start gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span>Regular-student section allotments are fixed according to official roll lists and institutional regulations.</span>
+                  </div>
+                ) : (
+                  <div className="mt-1.5 p-2 rounded bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] leading-tight flex items-start gap-1.5">
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                    <span>Lateral-entry student: Section allotment can be reassigned across valid sections.</span>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -344,6 +389,26 @@ export const StudentEditModal: React.FC<StudentEditModalProps> = ({
                 </select>
               </div>
             </div>
+
+            {/* Reassignment Audit Justification (When Lateral Section is changed) */}
+            {isSectionChanged && (
+              <div className="p-3 rounded-lg bg-indigo-50/70 border border-indigo-200 space-y-1.5">
+                <label className="block font-bold text-indigo-900 text-xs">
+                  Reassignment Justification / Audit Reason *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Administrative rebalancing, lab batch accommodation"
+                  value={reassignmentReason}
+                  onChange={(e) => setReassignmentReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-indigo-300 rounded-lg bg-white text-xs focus:ring-2 focus:ring-indigo-500"
+                />
+                <p className="text-[10px] text-indigo-700">
+                  This reallocation will be logged in the permanent institutional audit trail (<code className="font-mono">system_audit_logs</code>).
+                </p>
+              </div>
+            )}
 
             {/* Note on security boundary */}
             <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-[11px] leading-relaxed">

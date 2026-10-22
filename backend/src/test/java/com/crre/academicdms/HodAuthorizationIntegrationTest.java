@@ -83,11 +83,11 @@ class HodAuthorizationIntegrationTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true));
 
-        // 3. Department Students Scope
+        // 3. Department Students Scope (715 official students across 10 sections)
         mockMvc.perform(get("/api/v1/students").session(session))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(720)));
+            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(715)));
     }
 
     @Test

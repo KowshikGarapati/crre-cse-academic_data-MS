@@ -1,5 +1,9 @@
 package com.crre.academicdms.features.faculty.dto;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -22,8 +26,67 @@ public class FacultyDtos {
         String professionalExperience,
         String institutionalContact,
         boolean activeStatus,
-        List<String> activeRoles
-    ) {}
+        List<String> activeRoles,
+        String sourceUrl,
+        boolean isSynthetic
+    ) {
+        public FacultyProfileDto(
+            UUID id,
+            UUID userId,
+            String fullName,
+            String email,
+            String employeeNumber,
+            UUID departmentId,
+            String departmentName,
+            String designation,
+            String qualification,
+            String specialization,
+            String professionalExperience,
+            String institutionalContact,
+            boolean activeStatus,
+            List<String> activeRoles
+        ) {
+            this(id, userId, fullName, email, employeeNumber, departmentId, departmentName,
+                 designation, qualification, specialization, professionalExperience, institutionalContact,
+                 activeStatus, activeRoles, null, false);
+        }
+
+        @JsonProperty("facultyName")
+        public String facultyName() {
+            return fullName;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record UpdateFacultyProfileRequest(
+        String designation,
+        String qualification,
+        String specialization,
+        String professionalExperience,
+        String institutionalContact,
+        String sourceUrl,
+        Boolean activeStatus
+    ) {
+        @JsonCreator
+        public static UpdateFacultyProfileRequest fromJson(
+            @JsonProperty("designation") String designation,
+            @JsonProperty("qualification") String qualification,
+            @JsonProperty("specialization") String specialization,
+            @JsonProperty("professionalExperience") String professionalExperience,
+            @JsonProperty("institutionalContact") String institutionalContact,
+            @JsonProperty("sourceUrl") String sourceUrl,
+            @JsonProperty("activeStatus") Object rawActiveStatus
+        ) {
+            Boolean parsedStatus = null;
+            if (rawActiveStatus instanceof Boolean b) {
+                parsedStatus = b;
+            } else if (rawActiveStatus instanceof String s) {
+                parsedStatus = "ACTIVE".equalsIgnoreCase(s) || "true".equalsIgnoreCase(s);
+            }
+            return new UpdateFacultyProfileRequest(designation, qualification, specialization,
+                professionalExperience, institutionalContact, sourceUrl, parsedStatus);
+        }
+    }
 
     public record MySubjectDto(
         UUID subjectId,

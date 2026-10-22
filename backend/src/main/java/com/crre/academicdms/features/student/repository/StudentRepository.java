@@ -15,4 +15,5 @@ public interface StudentRepository extends JpaRepository<Student, UUID> {
     Optional<Student> findByUserId(UUID userId);
     List<Student> findAllByOrderByRegistrationNumberAsc();
     List<Student> findByIdInOrderByRegistrationNumberAsc(List<UUID> ids);
+    List<Student> findByIsSyntheticTrue();
 }

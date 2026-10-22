@@ -5,6 +5,7 @@ import { userApi } from '../api/user.api';
 import { responsibilityApi } from '../api/responsibility.api';
 import { academicApi } from '../api/academic.api';
 import { studentApi } from '../api/student.api';
+import { facultyApi } from '../api/faculty.api';
 import type {
   UserSummary,
   Role,
@@ -14,6 +15,8 @@ import type {
   AcademicMetadata,
   CounsellorStudentDto,
   StudentDto,
+  FacultyProfileDto,
+  UpdateFacultyProfileRequest,
 } from '../types/auth.types';
 import { isUserHod } from '../types/auth.types';
 import {
@@ -32,6 +35,10 @@ import {
   EyeOff,
   UserCheck,
   CheckCircle2,
+  ExternalLink,
+  Edit,
+  Award,
+  Globe,
 } from 'lucide-react';
 
 export const UsersPage: React.FC = () => {
@@ -41,6 +48,18 @@ export const UsersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
+
+  // Main Tab State
+  const [activeMainTab, setActiveMainTab] = useState<'USERS' | 'FACULTY_PROFILES'>('USERS');
+
+  // Faculty Directory State (Phase 3)
+  const [facultyProfiles, setFacultyProfiles] = useState<FacultyProfileDto[]>([]);
+  const [loadingFaculty, setLoadingFaculty] = useState(false);
+  const [facultySearch, setFacultySearch] = useState('');
+  const [selectedFacultyForEdit, setSelectedFacultyForEdit] = useState<FacultyProfileDto | null>(null);
+  const [facultyEditForm, setFacultyEditForm] = useState<UpdateFacultyProfileRequest>({});
+  const [savingFaculty, setSavingFaculty] = useState(false);
+  const [facultyEditError, setFacultyEditError] = useState<string | null>(null);
 
   // Add User Modal State
   const [showAddUserModal, setShowAddUserModal] = useState(false);
@@ -163,6 +182,7 @@ export const UsersPage: React.FC = () => {
       }
     }
     loadData();
+    loadFacultyProfiles();
     return () => {
       mounted = false;
     };
@@ -204,6 +224,75 @@ export const UsersPage: React.FC = () => {
       return matchesRole && matchesSearch;
     });
   }, [users, selectedRoleFilter, search]);
+
+  const loadFacultyProfiles = async () => {
+    setLoadingFaculty(true);
+    try {
+      const list = await facultyApi.getAllFacultyProfiles();
+      setFacultyProfiles(list);
+    } catch (err) {
+      console.error('Failed to load faculty profiles', err);
+    } finally {
+      setLoadingFaculty(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeMainTab === 'FACULTY_PROFILES') {
+      loadFacultyProfiles();
+    }
+  }, [activeMainTab]);
+
+  const handleOpenEditFaculty = (fp: FacultyProfileDto) => {
+    setSelectedFacultyForEdit(fp);
+    const isActive = fp.activeStatus === true || fp.activeStatus === 'ACTIVE';
+    setFacultyEditForm({
+      facultyName: fp.fullName || fp.facultyName || '',
+      designation: fp.designation || '',
+      qualification: fp.qualification || '',
+      specialization: fp.specialization || '',
+      professionalExperience: fp.professionalExperience || '',
+      institutionalContact: fp.institutionalContact || '',
+      activeStatus: isActive ? 'ACTIVE' : 'INACTIVE',
+      sourceUrl: fp.sourceUrl || '',
+    });
+    setFacultyEditError(null);
+  };
+
+  const handleSaveFacultyProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFacultyForEdit) return;
+    setSavingFaculty(true);
+    setFacultyEditError(null);
+    try {
+      const payload: UpdateFacultyProfileRequest = {
+        ...facultyEditForm,
+        activeStatus: facultyEditForm.activeStatus === 'ACTIVE' || facultyEditForm.activeStatus === (true as any),
+      };
+      const updated = await facultyApi.updateFacultyProfile(selectedFacultyForEdit.id, payload);
+      setFacultyProfiles((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedFacultyForEdit(null);
+    } catch (err: unknown) {
+      setFacultyEditError(err instanceof Error ? err.message : 'Failed to update faculty profile');
+    } finally {
+      setSavingFaculty(false);
+    }
+  };
+
+  const filteredFacultyProfiles = useMemo(() => {
+    const q = facultySearch.trim().toLowerCase();
+    if (!q) return facultyProfiles;
+    return facultyProfiles.filter((fp) => {
+      const name = fp.fullName || fp.facultyName || '';
+      return (
+        name.toLowerCase().includes(q) ||
+        (fp.employeeNumber && fp.employeeNumber.toLowerCase().includes(q)) ||
+        (fp.designation && fp.designation.toLowerCase().includes(q)) ||
+        (fp.specialization && fp.specialization.toLowerCase().includes(q)) ||
+        (fp.departmentName && fp.departmentName.toLowerCase().includes(q))
+      );
+    });
+  }, [facultyProfiles, facultySearch]);
 
   const handleToggleStatus = async (userToToggle: UserSummary) => {
     try {
@@ -704,7 +793,35 @@ export const UsersPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Filters Bar */}
+        {/* Main Navigation Tabs: User Accounts vs Faculty Directory */}
+        <div className="flex items-center gap-2 mb-6 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('USERS')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+              activeMainTab === 'USERS'
+                ? 'border-indigo-600 text-indigo-700 bg-white shadow-2xs rounded-t-lg'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Users className="w-4 h-4" /> User Accounts & Responsibilities ({users.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMainTab('FACULTY_PROFILES')}
+            className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 ${
+              activeMainTab === 'FACULTY_PROFILES'
+                ? 'border-indigo-600 text-indigo-700 bg-white shadow-2xs rounded-t-lg'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Award className="w-4 h-4" /> Published Faculty Profiles (sircrrengg.ac.in) ({facultyProfiles.length})
+          </button>
+        </div>
+
+        {activeMainTab === 'USERS' && (
+          <>
+            {/* Filters Bar */}
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -869,6 +986,159 @@ export const UsersPage: React.FC = () => {
             </div>
           )}
         </div>
+      </>
+    )}
+
+    {/* Faculty Profiles Tab View (Phase 3) */}
+    {activeMainTab === 'FACULTY_PROFILES' && (
+      <div className="space-y-4">
+        {/* Policy & Source Notice */}
+        <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200 text-blue-900 text-xs leading-relaxed flex items-start gap-3">
+          <Globe className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+          <div>
+            <strong className="font-bold">Official Published Faculty Records:</strong> Sourced from Sir C R Reddy College of Engineering official department web portal (
+            <a
+              href="https://sircrrengg.ac.in/departments/computer-science-and-engineering/faculty"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold underline hover:text-blue-700 inline-flex items-center gap-0.5"
+            >
+              sircrrengg.ac.in <ExternalLink className="w-3 h-3" />
+            </a>
+            ). In strict accordance with institutional policy, public directory entries do not create automatic user credentials or assign academic workloads. Authorized personnel can maintain profile accuracy and qualifications below.
+          </div>
+        </div>
+
+        {/* Faculty Search & Controls Bar */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="relative flex-1 max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search faculty name, designation, specialization, emp no..."
+              value={facultySearch}
+              onChange={(e) => setFacultySearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="text-xs text-slate-500 font-medium">
+            Showing <strong>{filteredFacultyProfiles.length}</strong> of <strong>{facultyProfiles.length}</strong> faculty profiles
+          </div>
+        </div>
+
+        {/* Faculty Profiles Table */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          {loadingFaculty ? (
+            <div className="p-12 text-center text-slate-500">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600 mb-2" />
+              <p className="text-sm">Loading published faculty profiles...</p>
+            </div>
+          ) : filteredFacultyProfiles.length === 0 ? (
+            <div className="p-12 text-center text-slate-500">
+              <Award className="w-8 h-8 mx-auto text-slate-400 mb-2" />
+              <p className="text-sm font-semibold text-slate-700">No faculty profiles found matching search</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="py-3 px-4">Faculty Member</th>
+                    <th className="py-3 px-4">Designation</th>
+                    <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Highest Qualification</th>
+                    <th className="py-3 px-4">Area of Specialization</th>
+                    <th className="py-3 px-4">Source & Status</th>
+                    <th className="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filteredFacultyProfiles.map((fp) => (
+                    <tr key={fp.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-slate-900">{fp.fullName || fp.facultyName || 'Faculty Member'}</div>
+                        <div className="font-mono text-[11px] text-slate-500">Emp ID: {fp.employeeNumber}</div>
+                        {fp.institutionalContact && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">{fp.institutionalContact}</div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                          {fp.designation}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-800">
+                        {fp.departmentName}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-teal-50 text-teal-800 border border-teal-200">
+                          {fp.qualification || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 max-w-xs text-slate-600 text-[11px]">
+                        {fp.specialization || 'General Computer Science'}
+                      </td>
+                      <td className="py-3 px-4 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          {fp.isSynthetic ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              Synthetic Demo
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                              Official Published
+                            </span>
+                          )}
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              fp.activeStatus === true || fp.activeStatus === 'ACTIVE'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {fp.activeStatus === true || fp.activeStatus === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                          {fp.sourceUrl ? (
+                            <a
+                              href={fp.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:text-indigo-800 underline inline-flex items-center gap-0.5"
+                            >
+                              Published Profile <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          ) : (
+                            <span className="text-slate-400">Internal Record</span>
+                          )}
+                          <span>&bull;</span>
+                          {fp.userId ? (
+                            <span className="text-emerald-700 font-medium">User Login Linked</span>
+                          ) : (
+                            <span className="text-slate-400 italic">No User Account</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditFaculty(fp)}
+                          className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-md border border-indigo-200 transition-colors cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <Edit className="w-3 h-3" /> Edit Profile
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    )}
       </main>
 
       {/* Add User Modal */}
@@ -2163,6 +2433,158 @@ export const UsersPage: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Edit Faculty Profile Modal (Phase 3) */}
+      {selectedFacultyForEdit && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Award className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Edit Faculty Profile
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    Emp ID: {selectedFacultyForEdit.employeeNumber} &bull; {selectedFacultyForEdit.departmentName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedFacultyForEdit(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {facultyEditError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{facultyEditError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveFacultyProfile} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Faculty Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Dr. K. Venkateswara Rao"
+                  value={facultyEditForm.facultyName || ''}
+                  onChange={(e) => setFacultyEditForm({ ...facultyEditForm, facultyName: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Designation *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Professor & HOD, Assistant Professor"
+                    value={facultyEditForm.designation || ''}
+                    onChange={(e) => setFacultyEditForm({ ...facultyEditForm, designation: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Highest Qualification</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ph.D, M.Tech, M.Phil"
+                    value={facultyEditForm.qualification || ''}
+                    onChange={(e) => setFacultyEditForm({ ...facultyEditForm, qualification: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Area of Specialization</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Deep Learning, Cloud Computing, Cyber Security"
+                  value={facultyEditForm.specialization || ''}
+                  onChange={(e) => setFacultyEditForm({ ...facultyEditForm, specialization: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Professional Experience</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 15+ Years"
+                    value={facultyEditForm.professionalExperience || ''}
+                    onChange={(e) => setFacultyEditForm({ ...facultyEditForm, professionalExperience: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Institutional Status</label>
+                  <select
+                    value={facultyEditForm.activeStatus === false || facultyEditForm.activeStatus === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE'}
+                    onChange={(e) => setFacultyEditForm({ ...facultyEditForm, activeStatus: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-semibold"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Institutional Contact / Ext</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Phone or Office Room LH-204"
+                  value={facultyEditForm.institutionalContact || ''}
+                  onChange={(e) => setFacultyEditForm({ ...facultyEditForm, institutionalContact: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Published Profile Source URL</label>
+                <input
+                  type="url"
+                  placeholder="https://sircrrengg.ac.in/departments/..."
+                  value={facultyEditForm.sourceUrl || ''}
+                  onChange={(e) => setFacultyEditForm({ ...facultyEditForm, sourceUrl: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-[11px]"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedFacultyForEdit(null)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 font-semibold rounded-lg hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingFaculty}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-sm disabled:opacity-60 cursor-pointer flex items-center gap-1.5"
+                >
+                  {savingFaculty && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Profile
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

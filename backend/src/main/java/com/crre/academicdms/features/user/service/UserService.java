@@ -90,6 +90,7 @@ public class UserService {
             // HOD sees departmental personnel: must have a FacultyProfile in hodDept OR an active departmental responsibility
             List<FacultyProfile> deptProfiles = facultyProfileRepository.findByDepartmentId(hodDept.getId());
             java.util.Set<UUID> deptUserIds = deptProfiles.stream()
+                .filter(fp -> fp.getUser() != null)
                 .map(fp -> fp.getUser().getId())
                 .collect(java.util.stream.Collectors.toSet());
 

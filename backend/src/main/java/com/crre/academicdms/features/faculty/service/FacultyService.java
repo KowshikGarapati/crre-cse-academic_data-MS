@@ -39,6 +39,7 @@ public class FacultyService {
     private final CounsellingAssignmentRepository counsellingAssignmentRepository;
     private final CounsellingRecordRepository counsellingRecordRepository;
     private final FacultyProfileRepository facultyProfileRepository;
+    private final com.crre.academicdms.features.academic.service.HodService hodService;
 
     public FacultyService(
         ResponsibilityRepository responsibilityRepository,
@@ -48,7 +49,8 @@ public class FacultyService {
         StudentRepository studentRepository,
         CounsellingAssignmentRepository counsellingAssignmentRepository,
         CounsellingRecordRepository counsellingRecordRepository,
-        FacultyProfileRepository facultyProfileRepository
+        FacultyProfileRepository facultyProfileRepository,
+        com.crre.academicdms.features.academic.service.HodService hodService
     ) {
         this.responsibilityRepository = responsibilityRepository;
         this.timetableRepository = timetableRepository;
@@ -58,6 +60,7 @@ public class FacultyService {
         this.counsellingAssignmentRepository = counsellingAssignmentRepository;
         this.counsellingRecordRepository = counsellingRecordRepository;
         this.facultyProfileRepository = facultyProfileRepository;
+        this.hodService = hodService;
     }
 
     @Transactional(readOnly = true)
@@ -417,11 +420,37 @@ public class FacultyService {
             })
             .toList();
 
+        return toDto(fp);
+    }
+
+    public FacultyProfileDto toDto(FacultyProfile fp) {
+        List<String> roleLabels = List.of();
+        if (fp.getUser() != null) {
+            List<Responsibility> resps = responsibilityRepository.findByUserIdAndTypeAndStatus(
+                fp.getUser().getId(), null, "ACTIVE"
+            );
+            roleLabels = resps.stream()
+                .map(r -> {
+                    if ("CLASS_TEACHER".equals(r.getType()) && r.getSection() != null) {
+                        return "Class Teacher (" + r.getSection().getSectionName() + ")";
+                    } else if ("TEACHING".equals(r.getType()) && r.getSubject() != null) {
+                        return r.getSubject().getCode() + " (" + (r.getSection() != null ? r.getSection().getSectionName() : "") + ")";
+                    } else {
+                        return r.getType().replace('_', ' ');
+                    }
+                })
+                .toList();
+        }
+
+        UUID uId = fp.getUser() != null ? fp.getUser().getId() : null;
+        String email = fp.getUser() != null ? fp.getUser().getEmail() : null;
+        String name = fp.getFacultyName();
+
         return new FacultyProfileDto(
             fp.getId(),
-            caller.getId(),
-            caller.getFullName(),
-            caller.getEmail(),
+            uId,
+            name,
+            email,
             fp.getEmployeeNumber(),
             fp.getDepartment() != null ? fp.getDepartment().getId() : null,
             fp.getDepartment() != null ? fp.getDepartment().getName() : null,
@@ -431,8 +460,83 @@ public class FacultyService {
             fp.getProfessionalExperience(),
             fp.getInstitutionalContact(),
             fp.isActiveStatus(),
-            roleLabels
+            roleLabels,
+            fp.getSourceUrl(),
+            fp.isSynthetic()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public List<FacultyProfileDto> getFacultyProfiles(UUID departmentId, Boolean includeSynthetic, UserPrincipal caller) {
+        List<FacultyProfile> list;
+        if (departmentId != null) {
+            list = facultyProfileRepository.findByDepartmentId(departmentId);
+        } else {
+            list = facultyProfileRepository.findAll();
+        }
+
+        boolean withSynthetic = includeSynthetic != null ? includeSynthetic : true;
+        return list.stream()
+            .filter(fp -> withSynthetic || !fp.isSynthetic())
+            .map(this::toDto)
+            .sorted(Comparator.comparing(FacultyProfileDto::fullName, Comparator.nullsLast(String::compareToIgnoreCase)))
+            .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public FacultyProfileDto getFacultyProfileById(UUID profileId, UserPrincipal caller) {
+        FacultyProfile fp = facultyProfileRepository.findById(profileId)
+            .orElseThrow(() -> new IllegalArgumentException("Faculty profile not found with ID: " + profileId));
+        return toDto(fp);
+    }
+
+    @Transactional
+    public FacultyProfileDto updateFacultyProfile(UUID profileId, UpdateFacultyProfileRequest req, UserPrincipal caller) {
+        if (caller == null) {
+            throw new AccessDeniedException("Authentication required");
+        }
+        boolean canManage = caller.getRole() == Role.ADMIN
+            || caller.getRole() == Role.PRINCIPAL
+            || caller.getRole() == Role.HOD
+            || caller.isHod();
+        if (!canManage) {
+            throw new AccessDeniedException("Only HOD, Principal, or Admin can update faculty profiles");
+        }
+
+        FacultyProfile fp = facultyProfileRepository.findById(profileId)
+            .orElseThrow(() -> new IllegalArgumentException("Faculty profile not found with ID: " + profileId));
+
+        if (caller.getRole() == Role.HOD || caller.isHod()) {
+            com.crre.academicdms.features.academic.model.Department hodDept = hodService.resolveHodDepartment(caller);
+            if (fp.getDepartment() != null && !fp.getDepartment().getId().equals(hodDept.getId())) {
+                throw new AccessDeniedException("HOD cannot edit faculty profile in a different department");
+            }
+        }
+
+        if (req.designation() != null && !req.designation().isBlank()) {
+            fp.setDesignation(req.designation().trim());
+        }
+        if (req.qualification() != null && !req.qualification().isBlank()) {
+            fp.setQualification(req.qualification().trim());
+        }
+        if (req.specialization() != null) {
+            fp.setSpecialization(req.specialization().trim());
+        }
+        if (req.professionalExperience() != null) {
+            fp.setProfessionalExperience(req.professionalExperience().trim());
+        }
+        if (req.institutionalContact() != null) {
+            fp.setInstitutionalContact(req.institutionalContact().trim());
+        }
+        if (req.sourceUrl() != null) {
+            fp.setSourceUrl(req.sourceUrl().trim());
+        }
+        if (req.activeStatus() != null) {
+            fp.setActiveStatus(req.activeStatus());
+        }
+
+        fp = facultyProfileRepository.save(fp);
+        return toDto(fp);
     }
 
     private boolean isHodOfSection(UserPrincipal caller, UUID sectionId) {

@@ -52,6 +52,11 @@ public class StudentDtos {
         String status,
         String admissionCategory,
         String tuitionCategory,
+        LocalDate dateOfBirth,
+        String gender,
+        String entranceExamName,
+        String entranceHallTicket,
+        Integer entranceRank,
         StudentPlacementDto placement,
         String classTeacherName,
         String classTeacherEmail,
@@ -100,6 +105,11 @@ public class StudentDtos {
         String status,
         String admissionCategory,
         String tuitionCategory,
+        LocalDate dateOfBirth,
+        String gender,
+        String entranceExamName,
+        String entranceHallTicket,
+        Integer entranceRank,
         StudentPlacementDto placement,
         String classTeacherName,
         String classTeacherEmail,
@@ -111,6 +121,89 @@ public class StudentDtos {
         boolean canViewCounselling,
         List<StudentCounsellingSessionDto> counsellingRecords,
         String attendanceStatus,
-        String resultsStatus
+        String resultsStatus,
+        List<StudentCertificateDto> certificates
+    ) {
+        public StudentDetailDto(
+            UUID id,
+            UUID userId,
+            String registrationNumber,
+            String fullName,
+            String email,
+            String uniqueId,
+            Long aadharNumber,
+            Long apaarNumber,
+            String entryType,
+            String status,
+            String admissionCategory,
+            String tuitionCategory,
+            LocalDate dateOfBirth,
+            String gender,
+            String entranceExamName,
+            String entranceHallTicket,
+            Integer entranceRank,
+            StudentPlacementDto placement,
+            String classTeacherName,
+            String classTeacherEmail,
+            String counsellorName,
+            String counsellorEmail,
+            List<EducationalHistoryDto> educationalHistory,
+            List<StudentCourseRegistrationDto> currentCourses,
+            List<TimetableEntryDto> timetable,
+            boolean canViewCounselling,
+            List<StudentCounsellingSessionDto> counsellingRecords,
+            String attendanceStatus,
+            String resultsStatus
+        ) {
+            this(id, userId, registrationNumber, fullName, email, uniqueId, aadharNumber, apaarNumber,
+                 entryType, status, admissionCategory, tuitionCategory, dateOfBirth, gender,
+                 entranceExamName, entranceHallTicket, entranceRank, placement, classTeacherName,
+                 classTeacherEmail, counsellorName, counsellorEmail, educationalHistory, currentCourses,
+                 timetable, canViewCounselling, counsellingRecords, attendanceStatus, resultsStatus, List.of());
+        }
+    }
+
+    public record ReassignSectionRequest(
+        UUID newSectionId,
+        String reason
+    ) {}
+
+    public record ReassignSectionResponse(
+        UUID studentId,
+        String registrationNumber,
+        String fullName,
+        UUID previousSectionId,
+        String previousSectionName,
+        UUID newSectionId,
+        String newSectionName,
+        String message
+    ) {}
+
+    public record StudentCertificateDto(
+        UUID id,
+        UUID studentId,
+        String certificateType,
+        String certificateName,
+        String certificateIdentifier,
+        String issuingAuthority,
+        Integer issueYear,
+        LocalDate issueDate,
+        String submissionStatus,
+        UUID verifiedBy,
+        String verifiedByName,
+        java.time.Instant verificationDate,
+        String remarks,
+        java.time.Instant createdAt
+    ) {}
+
+    public record UpsertCertificateRequest(
+        String certificateType,
+        String certificateName,
+        String certificateIdentifier,
+        String issuingAuthority,
+        Integer issueYear,
+        LocalDate issueDate,
+        String submissionStatus,
+        String remarks
     ) {}
 }

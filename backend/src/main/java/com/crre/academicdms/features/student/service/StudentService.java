@@ -13,6 +13,7 @@ import com.crre.academicdms.features.responsibility.repository.ResponsibilityRep
 import com.crre.academicdms.features.student.dto.StudentDtos.*;
 import com.crre.academicdms.features.student.dto.UpdateStudentRequest;
 import com.crre.academicdms.features.student.model.Student;
+import com.crre.academicdms.features.student.model.StudentCertificate;
 import com.crre.academicdms.features.student.model.StudentEducationalHistory;
 import com.crre.academicdms.features.student.model.StudentEnrollment;
 import com.crre.academicdms.features.student.repository.StudentEducationalHistoryRepository;
@@ -43,6 +44,8 @@ public class StudentService {
     private final com.crre.academicdms.features.user.repository.UserRepository userRepository;
     private final com.crre.academicdms.features.academic.service.HodService hodService;
     private final StudentScopeService studentScopeService;
+    private final com.crre.academicdms.features.audit.service.AuditLogService auditLogService;
+    private final com.crre.academicdms.features.student.repository.StudentCertificateRepository certificateRepository;
 
     public StudentService(
         StudentRepository studentRepository,
@@ -56,7 +59,9 @@ public class StudentService {
         com.crre.academicdms.features.academic.repository.SectionRepository sectionRepository,
         com.crre.academicdms.features.user.repository.UserRepository userRepository,
         com.crre.academicdms.features.academic.service.HodService hodService,
-        StudentScopeService studentScopeService
+        StudentScopeService studentScopeService,
+        com.crre.academicdms.features.audit.service.AuditLogService auditLogService,
+        com.crre.academicdms.features.student.repository.StudentCertificateRepository certificateRepository
     ) {
         this.studentRepository = studentRepository;
         this.enrollmentRepository = enrollmentRepository;
@@ -70,6 +75,8 @@ public class StudentService {
         this.userRepository = userRepository;
         this.hodService = hodService;
         this.studentScopeService = studentScopeService;
+        this.auditLogService = auditLogService;
+        this.certificateRepository = certificateRepository;
     }
 
     @Transactional(readOnly = true)
@@ -158,6 +165,11 @@ public class StudentService {
             student.getStatus(),
             student.getAdmissionCategory(),
             student.getTuitionCategory(),
+            student.getDateOfBirth(),
+            student.getGender(),
+            student.getEntranceExamName(),
+            student.getEntranceHallTicket(),
+            student.getEntranceRank(),
             placement,
             classTeacherName,
             classTeacherEmail,
@@ -375,6 +387,11 @@ public class StudentService {
         Long aadhar = studentUser != null ? studentUser.getAadharNumber() : null;
         Long apaar = studentUser != null ? studentUser.getApaarNumber() : null;
 
+        // Student Certificates
+        List<StudentCertificateDto> certDtos = certificateRepository.findByStudentIdOrderByCreatedAtAsc(student.getId()).stream()
+            .map(this::toCertificateDto)
+            .toList();
+
         return new StudentDetailDto(
             student.getId(),
             userId,
@@ -388,6 +405,11 @@ public class StudentService {
             student.getStatus(),
             student.getAdmissionCategory(),
             student.getTuitionCategory(),
+            student.getDateOfBirth(),
+            student.getGender(),
+            student.getEntranceExamName(),
+            student.getEntranceHallTicket(),
+            student.getEntranceRank(),
             placement,
             classTeacherName,
             classTeacherEmail,
@@ -399,7 +421,8 @@ public class StudentService {
             canViewCounselling,
             counsellingRecords,
             "Attendance data not available yet.",
-            "No academic results recorded."
+            "No academic results recorded.",
+            certDtos
         );
     }
 
@@ -512,31 +535,33 @@ public class StudentService {
             }
         }
 
-        // 7. Section reassignment (restricted to ADMIN, PRINCIPAL, HOD, CLASS_TEACHER)
+        // 7. Section reassignment (strictly for LATERAL entry students)
         if (req.sectionId() != null) {
             List<StudentEnrollment> enrollments = enrollmentRepository.findByStudentId(student.getId());
             Section currentSec = enrollments.stream().filter(StudentEnrollment::isCurrent).map(StudentEnrollment::getSection).findFirst().orElse(null);
             if (currentSec == null || !currentSec.getId().equals(req.sectionId())) {
-                Section newSec = sectionRepository.findById(req.sectionId())
-                    .orElseThrow(() -> new IllegalArgumentException("Section not found with id: " + req.sectionId()));
-
-                if (caller.getRole() == com.crre.academicdms.features.user.model.Role.HOD || caller.isHod()) {
-                    com.crre.academicdms.features.academic.model.Department hodDept = hodService.resolveHodDepartment(caller);
-                    if (newSec.getSemester() == null || newSec.getSemester().getProgram() == null
-                        || newSec.getSemester().getProgram().getDepartment() == null
-                        || !newSec.getSemester().getProgram().getDepartment().getId().equals(hodDept.getId())) {
-                        throw new org.springframework.security.access.AccessDeniedException("HOD cannot move student to a section outside their department");
-                    }
+                if (!"LATERAL".equalsIgnoreCase(student.getEntryType())) {
+                    throw new IllegalArgumentException("Only lateral-entry students can have their section allotment modified. Regular-student section allotments are fixed.");
                 }
-
-                for (StudentEnrollment se : enrollments) {
-                    se.setCurrent(false);
-                }
-                enrollmentRepository.saveAll(enrollments);
-
-                StudentEnrollment newEnrollment = new StudentEnrollment(student, newSec, true);
-                enrollmentRepository.save(newEnrollment);
+                reassignLateralSection(student.getId().toString(), new ReassignSectionRequest(req.sectionId(), "Updated via student profile edit"), caller, null, null);
             }
+        }
+
+        // 8. Personal bio and entrance exam fields
+        if (req.dateOfBirth() != null) {
+            student.setDateOfBirth(req.dateOfBirth());
+        }
+        if (req.gender() != null && !req.gender().isBlank()) {
+            student.setGender(req.gender().trim().toUpperCase());
+        }
+        if (req.entranceExamName() != null && !req.entranceExamName().isBlank()) {
+            student.setEntranceExamName(req.entranceExamName().trim().toUpperCase());
+        }
+        if (req.entranceHallTicket() != null && !req.entranceHallTicket().isBlank()) {
+            student.setEntranceHallTicket(req.entranceHallTicket().trim());
+        }
+        if (req.entranceRank() != null) {
+            student.setEntranceRank(req.entranceRank());
         }
 
         studentRepository.save(student);
@@ -545,5 +570,324 @@ public class StudentService {
         }
 
         return getStudentDetails(student.getId().toString(), caller);
+    }
+
+    @Transactional
+    public ReassignSectionResponse reassignLateralSection(
+        String studentIdentifier,
+        ReassignSectionRequest request,
+        UserPrincipal caller,
+        String ipAddress,
+        String userAgent
+    ) {
+        if (caller == null) {
+            throw new org.springframework.security.access.AccessDeniedException("Authentication required");
+        }
+
+        boolean isAuthorized = caller.getRole() == com.crre.academicdms.features.user.model.Role.ADMIN
+            || caller.getRole() == com.crre.academicdms.features.user.model.Role.PRINCIPAL
+            || caller.getRole() == com.crre.academicdms.features.user.model.Role.HOD
+            || caller.isHod();
+        if (!isAuthorized) {
+            throw new org.springframework.security.access.AccessDeniedException("Only HOD, Principal, or Admin can reassign student sections");
+        }
+
+        if (request == null || request.newSectionId() == null) {
+            throw new IllegalArgumentException("Target section ID is required for reassignment");
+        }
+
+        Student student = studentScopeService.resolveStudent(studentIdentifier);
+
+        // Strict rule: Regular-student allotments are fixed and not editable
+        if (!"LATERAL".equalsIgnoreCase(student.getEntryType())) {
+            throw new IllegalArgumentException("Only lateral-entry students can have their section allotment modified. Regular-student section allotments are fixed.");
+        }
+
+        Section newSec = sectionRepository.findById(request.newSectionId())
+            .orElseThrow(() -> new IllegalArgumentException("Target section not found with id: " + request.newSectionId()));
+
+        if (caller.getRole() == com.crre.academicdms.features.user.model.Role.HOD || caller.isHod()) {
+            com.crre.academicdms.features.academic.model.Department hodDept = hodService.resolveHodDepartment(caller);
+            if (newSec.getSemester() == null || newSec.getSemester().getProgram() == null
+                || newSec.getSemester().getProgram().getDepartment() == null
+                || !newSec.getSemester().getProgram().getDepartment().getId().equals(hodDept.getId())) {
+                throw new org.springframework.security.access.AccessDeniedException("HOD cannot assign student to a section outside their department");
+            }
+        }
+
+        List<StudentEnrollment> enrollments = enrollmentRepository.findByStudentId(student.getId());
+        Section currentSec = enrollments.stream()
+            .filter(StudentEnrollment::isCurrent)
+            .map(StudentEnrollment::getSection)
+            .findFirst()
+            .orElse(null);
+
+        if (currentSec != null) {
+            if (currentSec.getId().equals(newSec.getId())) {
+                return new ReassignSectionResponse(
+                    student.getId(),
+                    student.getRegistrationNumber(),
+                    student.getFullName(),
+                    currentSec.getId(),
+                    currentSec.getSectionName(),
+                    newSec.getId(),
+                    newSec.getSectionName(),
+                    "Student is already enrolled in " + newSec.getSectionName()
+                );
+            }
+
+            if (!currentSec.getSemester().getProgram().getId().equals(newSec.getSemester().getProgram().getId())) {
+                throw new IllegalArgumentException("Cannot reassign lateral student across different programs: Current is "
+                    + currentSec.getSemester().getProgram().getName() + ", target is " + newSec.getSemester().getProgram().getName());
+            }
+
+            if (currentSec.getSemester().getSemesterNumber() != newSec.getSemester().getSemesterNumber()) {
+                throw new IllegalArgumentException("Cannot reassign lateral student across different academic periods (semesters)");
+            }
+        } else {
+            // Unallocated lateral student (e.g. 26B85A0537 to 0544)
+            String regNo = student.getRegistrationNumber().toUpperCase();
+            String branchCode = regNo.length() >= 8 ? regNo.substring(6, 8) : "";
+            String progCode = newSec.getSemester().getProgram().getCode();
+            boolean branchMatches = switch (branchCode) {
+                case "05" -> "CSE".equalsIgnoreCase(progCode);
+                case "42" -> "AIML".equalsIgnoreCase(progCode);
+                case "45" -> "AIDS".equalsIgnoreCase(progCode) || "CAD".equalsIgnoreCase(progCode);
+                case "46" -> "CS".equalsIgnoreCase(progCode) || "CSC".equalsIgnoreCase(progCode);
+                default -> true;
+            };
+            if (!branchMatches) {
+                throw new IllegalArgumentException("Target section program (" + progCode
+                    + ") does not match student's branch code in registration number (" + branchCode + ")");
+            }
+        }
+
+        // Prevent duplicate current enrollments: Set all existing enrollments to current = false
+        for (StudentEnrollment se : enrollments) {
+            se.setCurrent(false);
+        }
+        enrollmentRepository.saveAll(enrollments);
+
+        // Create new current enrollment preserving academic placement
+        StudentEnrollment newEnrollment = new StudentEnrollment(student, newSec, true);
+        enrollmentRepository.save(newEnrollment);
+
+        // Record Audit Log for administrative traceability
+        String oldVal = currentSec != null
+            ? String.format("{\"sectionId\":\"%s\",\"sectionName\":\"%s\"}", currentSec.getId(), currentSec.getSectionName())
+            : null;
+        String newVal = String.format("{\"sectionId\":\"%s\",\"sectionName\":\"%s\",\"reason\":\"%s\"}",
+            newSec.getId(), newSec.getSectionName(), request.reason() != null ? request.reason() : "Lateral section reassignment");
+
+        auditLogService.logAction(
+            caller,
+            currentSec != null ? "REASSIGN_LATERAL_SECTION" : "ASSIGN_LATERAL_SECTION",
+            "STUDENT_ENROLLMENT",
+            student.getId().toString(),
+            oldVal,
+            newVal,
+            ipAddress,
+            userAgent
+        );
+
+        return new ReassignSectionResponse(
+            student.getId(),
+            student.getRegistrationNumber(),
+            student.getFullName(),
+            currentSec != null ? currentSec.getId() : null,
+            currentSec != null ? currentSec.getSectionName() : "UNALLOCATED",
+            newSec.getId(),
+            newSec.getSectionName(),
+            "Lateral student successfully assigned to " + newSec.getSectionName()
+        );
+    }
+
+    // ==================== CERTIFICATE MANAGEMENT METHODS ====================
+
+    public StudentCertificateDto toCertificateDto(StudentCertificate cert) {
+        String verifiedByName = cert.getVerifiedBy() != null ? cert.getVerifiedBy().getFullName() : null;
+        UUID verifiedById = cert.getVerifiedBy() != null ? cert.getVerifiedBy().getId() : null;
+
+        return new StudentCertificateDto(
+            cert.getId(),
+            cert.getStudent().getId(),
+            cert.getCertificateType(),
+            cert.getCertificateName(),
+            cert.getCertificateIdentifier(),
+            cert.getIssuingAuthority(),
+            cert.getIssueYear(),
+            cert.getIssueDate(),
+            cert.getSubmissionStatus(),
+            verifiedById,
+            verifiedByName,
+            cert.getVerificationDate(),
+            cert.getRemarks(),
+            cert.getCreatedAt()
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentCertificateDto> getStudentCertificates(String studentIdentifier, UserPrincipal caller) {
+        Student student = studentScopeService.resolveStudent(studentIdentifier);
+        if (!studentScopeService.isStudentAccessible(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to view certificates for this student");
+        }
+        return certificateRepository.findByStudentIdOrderByCreatedAtAsc(student.getId()).stream()
+            .map(this::toCertificateDto)
+            .toList();
+    }
+
+    @Transactional
+    public StudentCertificateDto addStudentCertificate(String studentIdentifier, UpsertCertificateRequest req, UserPrincipal caller) {
+        Student student = studentScopeService.resolveStudent(studentIdentifier);
+        if (!studentScopeService.canEditStudent(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to manage certificates for this student");
+        }
+
+        if (req == null || req.certificateType() == null || req.certificateType().isBlank()
+            || req.certificateName() == null || req.certificateName().isBlank()) {
+            throw new IllegalArgumentException("Certificate type and certificate name are required");
+        }
+
+        StudentCertificate cert = new StudentCertificate();
+        cert.setStudent(student);
+        cert.setCertificateType(req.certificateType().trim().toUpperCase());
+        cert.setCertificateName(req.certificateName().trim());
+        cert.setCertificateIdentifier(req.certificateIdentifier() != null ? req.certificateIdentifier().trim() : null);
+        cert.setIssuingAuthority(req.issuingAuthority() != null ? req.issuingAuthority().trim() : null);
+        cert.setIssueYear(req.issueYear());
+        cert.setIssueDate(req.issueDate());
+        cert.setSubmissionStatus(req.submissionStatus() != null ? req.submissionStatus().trim().toUpperCase() : "SUBMITTED");
+        cert.setRemarks(req.remarks());
+
+        if ("VERIFIED".equalsIgnoreCase(cert.getSubmissionStatus()) && caller != null) {
+            cert.setVerifiedBy(userRepository.findById(caller.getId()).orElse(null));
+            cert.setVerificationDate(java.time.Instant.now());
+        }
+
+        cert = certificateRepository.save(cert);
+        return toCertificateDto(cert);
+    }
+
+    @Transactional
+    public StudentCertificateDto updateStudentCertificate(
+        String studentIdentifier,
+        UUID certificateId,
+        UpsertCertificateRequest req,
+        UserPrincipal caller
+    ) {
+        Student student = studentScopeService.resolveStudent(studentIdentifier);
+        if (!studentScopeService.canEditStudent(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to manage certificates for this student");
+        }
+
+        StudentCertificate cert = certificateRepository.findById(certificateId)
+            .orElseThrow(() -> new IllegalArgumentException("Certificate record not found with ID: " + certificateId));
+
+        if (!cert.getStudent().getId().equals(student.getId())) {
+            throw new IllegalArgumentException("Certificate does not belong to specified student");
+        }
+
+        if (req.certificateType() != null && !req.certificateType().isBlank()) {
+            cert.setCertificateType(req.certificateType().trim().toUpperCase());
+        }
+        if (req.certificateName() != null && !req.certificateName().isBlank()) {
+            cert.setCertificateName(req.certificateName().trim());
+        }
+        if (req.certificateIdentifier() != null) {
+            cert.setCertificateIdentifier(req.certificateIdentifier().trim());
+        }
+        if (req.issuingAuthority() != null) {
+            cert.setIssuingAuthority(req.issuingAuthority().trim());
+        }
+        if (req.issueYear() != null) {
+            cert.setIssueYear(req.issueYear());
+        }
+        if (req.issueDate() != null) {
+            cert.setIssueDate(req.issueDate());
+        }
+        if (req.submissionStatus() != null && !req.submissionStatus().isBlank()) {
+            String newStatus = req.submissionStatus().trim().toUpperCase();
+            cert.setSubmissionStatus(newStatus);
+            if ("VERIFIED".equals(newStatus) && cert.getVerificationDate() == null && caller != null) {
+                cert.setVerifiedBy(userRepository.findById(caller.getId()).orElse(null));
+                cert.setVerificationDate(java.time.Instant.now());
+            }
+        }
+        if (req.remarks() != null) {
+            cert.setRemarks(req.remarks().trim());
+        }
+
+        cert = certificateRepository.save(cert);
+        return toCertificateDto(cert);
+    }
+
+    @Transactional
+    public void deleteStudentCertificate(String studentIdentifier, UUID certificateId, UserPrincipal caller) {
+        Student student = studentScopeService.resolveStudent(studentIdentifier);
+        if (!studentScopeService.canEditStudent(student, caller)) {
+            throw new org.springframework.security.access.AccessDeniedException("Access denied: You are not authorized to manage certificates for this student");
+        }
+
+        StudentCertificate cert = certificateRepository.findById(certificateId)
+            .orElseThrow(() -> new IllegalArgumentException("Certificate record not found with ID: " + certificateId));
+
+        if (!cert.getStudent().getId().equals(student.getId())) {
+            throw new IllegalArgumentException("Certificate does not belong to specified student");
+        }
+
+        certificateRepository.delete(cert);
+    }
+
+    @Transactional
+    public int backfillCertificatesFromStudentRecords() {
+        List<Student> officialStudents = studentRepository.findAll().stream()
+            .filter(s -> !s.isSynthetic())
+            .toList();
+
+        int count = 0;
+        for (Student s : officialStudents) {
+            List<com.crre.academicdms.features.student.model.StudentEducationalHistory> edus =
+                educationalHistoryRepository.findByStudentIdOrderByCompletionYearAsc(s.getId());
+
+            for (var edu : edus) {
+                String type = edu.getQualificationType();
+                String certType = "SSC".equalsIgnoreCase(type) ? "SSC_PASS_CERTIFICATE" : "INTERMEDIATE_MEMO";
+                if (!certificateRepository.existsByStudentIdAndCertificateType(s.getId(), certType)) {
+                    StudentCertificate cert = new StudentCertificate(
+                        s,
+                        certType,
+                        "SSC".equalsIgnoreCase(type) ? "SSC Pass Certificate" : "Intermediate / Diploma Marks Memo",
+                        edu.getHallTicketNumber(),
+                        edu.getBoardOrUniversity() != null ? edu.getBoardOrUniversity() : edu.getInstitutionName(),
+                        edu.getCompletionYear() > 0 ? edu.getCompletionYear() : null,
+                        "SUBMITTED"
+                    );
+                    certificateRepository.save(cert);
+                    count++;
+                }
+            }
+
+            if (s.getEntranceHallTicket() != null && !s.getEntranceHallTicket().isBlank()) {
+                String rankCardType = "LATERAL".equalsIgnoreCase(s.getEntryType()) ? "ECET_RANK_CARD" : "EAPCET_RANK_CARD";
+                if (!certificateRepository.existsByStudentIdAndCertificateType(s.getId(), rankCardType)) {
+                    StudentCertificate cert = new StudentCertificate(
+                        s,
+                        rankCardType,
+                        "LATERAL".equalsIgnoreCase(s.getEntryType()) ? "AP ECET Rank Card" : "AP EAPCET Rank Card",
+                        s.getEntranceHallTicket(),
+                        "APSCHE",
+                        null,
+                        "SUBMITTED"
+                    );
+                    if (s.getEntranceRank() != null) {
+                        cert.setRemarks("Rank: " + s.getEntranceRank());
+                    }
+                    certificateRepository.save(cert);
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 }

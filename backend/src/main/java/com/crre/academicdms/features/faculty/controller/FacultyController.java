@@ -121,4 +121,33 @@ public class FacultyController {
         FacultyProfileDto profile = facultyService.getMyProfile(caller);
         return ResponseEntity.ok(ApiResponse.success("Faculty profile retrieved", profile));
     }
+
+    @GetMapping("/profiles")
+    public ResponseEntity<ApiResponse<List<FacultyProfileDto>>> getProfiles(
+        @RequestParam(required = false) UUID departmentId,
+        @RequestParam(required = false, defaultValue = "true") Boolean includeSynthetic,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        List<FacultyProfileDto> profiles = facultyService.getFacultyProfiles(departmentId, includeSynthetic, caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty profiles retrieved successfully", profiles));
+    }
+
+    @GetMapping("/profiles/{profileId}")
+    public ResponseEntity<ApiResponse<FacultyProfileDto>> getProfileById(
+        @PathVariable UUID profileId,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        FacultyProfileDto profile = facultyService.getFacultyProfileById(profileId, caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty profile retrieved successfully", profile));
+    }
+
+    @PutMapping("/profiles/{profileId}")
+    public ResponseEntity<ApiResponse<FacultyProfileDto>> updateProfile(
+        @PathVariable UUID profileId,
+        @RequestBody UpdateFacultyProfileRequest req,
+        @AuthenticationPrincipal UserPrincipal caller
+    ) {
+        FacultyProfileDto updated = facultyService.updateFacultyProfile(profileId, req, caller);
+        return ResponseEntity.ok(ApiResponse.success("Faculty profile updated successfully", updated));
+    }
 }

@@ -26,7 +26,7 @@ public class StudentEducationalHistory {
     @Column(name = "institution_name", nullable = false, length = 255)
     private String institutionName;
 
-    @Column(name = "hall_ticket_number", nullable = false, length = 50)
+    @Column(name = "hall_ticket_number", length = 50)
     private String hallTicketNumber;
 
     @Column(name = "completion_year", nullable = false)

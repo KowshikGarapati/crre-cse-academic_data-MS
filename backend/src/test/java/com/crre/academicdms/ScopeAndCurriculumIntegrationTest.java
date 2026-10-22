@@ -110,14 +110,14 @@ class ScopeAndCurriculumIntegrationTest {
     }
 
     @Test
-    @DisplayName("Unified Student Scope: HOD sees all students in department (720 students across 10 sections)")
+    @DisplayName("Unified Student Scope: HOD sees all students in department (715 official students across 10 sections)")
     void hod_scopedStudents() throws Exception {
         MockHttpSession session = loginAs("hod.cse", "Admin@123");
 
         mockMvc.perform(get("/api/v1/students").session(session))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.success").value(true))
-            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(720)));
+            .andExpect(jsonPath("$.data.length()", greaterThanOrEqualTo(715)));
     }
 
     @Test

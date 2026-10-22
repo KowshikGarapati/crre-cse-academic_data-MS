@@ -11,6 +11,7 @@ import type {
   MySubjectDto,
   SectionStudentsGroupDto,
   StudentDto,
+  UpdateFacultyProfileRequest,
 } from '../types/auth.types';
 
 export const facultyApi = {
@@ -107,6 +108,28 @@ export const facultyApi = {
   async getProfile(): Promise<FacultyProfileDto | null> {
     const res = await request<ApiResponse<FacultyProfileDto>>('/api/v1/faculty/profile', {
       method: 'GET',
+    });
+    return res.data;
+  },
+
+  async getAllFacultyProfiles(): Promise<FacultyProfileDto[]> {
+    const res = await request<ApiResponse<FacultyProfileDto[]>>('/api/v1/faculty/profiles', {
+      method: 'GET',
+    });
+    return res.data;
+  },
+
+  async getFacultyProfileById(id: string): Promise<FacultyProfileDto> {
+    const res = await request<ApiResponse<FacultyProfileDto>>(`/api/v1/faculty/profiles/${id}`, {
+      method: 'GET',
+    });
+    return res.data;
+  },
+
+  async updateFacultyProfile(id: string, req: UpdateFacultyProfileRequest): Promise<FacultyProfileDto> {
+    const res = await request<ApiResponse<FacultyProfileDto>>(`/api/v1/faculty/profiles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
     });
     return res.data;
   },

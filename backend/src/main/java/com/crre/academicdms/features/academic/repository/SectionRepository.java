@@ -14,6 +14,13 @@ public interface SectionRepository extends JpaRepository<Section, UUID> {
 
     @org.springframework.data.jpa.repository.Query("""
         SELECT s FROM Section s
+        JOIN FETCH s.semester sem
+        JOIN FETCH sem.program p
+    """)
+    List<Section> findAllWithProgram();
+
+    @org.springframework.data.jpa.repository.Query("""
+        SELECT s FROM Section s
         WHERE s.semester.program.department.id = :deptId
     """)
     List<Section> findByDepartmentId(@org.springframework.data.repository.query.Param("deptId") UUID deptId);

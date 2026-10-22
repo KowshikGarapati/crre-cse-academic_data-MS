@@ -35,6 +35,24 @@ public class Student {
     @Column(name = "tuition_category", length = 30)
     private String tuitionCategory;
 
+    @Column(name = "date_of_birth")
+    private java.time.LocalDate dateOfBirth;
+
+    @Column(length = 20)
+    private String gender;
+
+    @Column(name = "entrance_exam_name", length = 50)
+    private String entranceExamName;
+
+    @Column(name = "entrance_hall_ticket", length = 50)
+    private String entranceHallTicket;
+
+    @Column(name = "entrance_rank")
+    private Integer entranceRank;
+
+    @Column(name = "is_synthetic", nullable = false)
+    private boolean isSynthetic = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -66,6 +84,25 @@ public class Student {
     public void setAdmissionCategory(String admissionCategory) { this.admissionCategory = admissionCategory; }
     public String getTuitionCategory() { return tuitionCategory; }
     public void setTuitionCategory(String tuitionCategory) { this.tuitionCategory = tuitionCategory; }
+
+    public java.time.LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(java.time.LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    public String getGender() { return gender; }
+    public void setGender(String gender) { this.gender = gender; }
+
+    public String getEntranceExamName() { return entranceExamName; }
+    public void setEntranceExamName(String entranceExamName) { this.entranceExamName = entranceExamName; }
+
+    public String getEntranceHallTicket() { return entranceHallTicket; }
+    public void setEntranceHallTicket(String entranceHallTicket) { this.entranceHallTicket = entranceHallTicket; }
+
+    public Integer getEntranceRank() { return entranceRank; }
+    public void setEntranceRank(Integer entranceRank) { this.entranceRank = entranceRank; }
+
+    public boolean isSynthetic() { return isSynthetic; }
+    public void setSynthetic(boolean synthetic) { isSynthetic = synthetic; }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 }

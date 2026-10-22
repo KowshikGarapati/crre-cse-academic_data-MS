@@ -10,4 +10,6 @@ import java.util.UUID;
 @Repository
 public interface StudentEducationalHistoryRepository extends JpaRepository<StudentEducationalHistory, UUID> {
     List<StudentEducationalHistory> findByStudentIdOrderByCompletionYearAsc(UUID studentId);
+    List<StudentEducationalHistory> findByStudentId(UUID studentId);
+    void deleteByStudentId(UUID studentId);
 }

@@ -131,9 +131,11 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        ensureAllStudentsHaveUsers();
-
         boolean needSeedStudents = studentRepository.count() < 720;
+        if (needSeedStudents) {
+            ensureAllStudentsHaveUsers();
+        }
+
         log.info("Initializing/verifying CRRE Academic DMS V2.2 Dataset (CSE Department, 4 Programs, 10 Sections, 35 Faculty, conflict-free Timetable)...");
 
         // 1. Institution & Department
@@ -195,12 +197,11 @@ public class SyntheticDatasetSeeder implements ApplicationRunner {
         List<Student> allStudents;
         if (needSeedStudents) {
             allStudents = seedStudents(sections);
+            // 11. Counselling Assignments (Distribute students across faculty counsellors)
+            seedCounselling(allStudents, facultyUsers);
         } else {
             allStudents = studentRepository.findAll();
         }
-
-        // 11. Counselling Assignments (Distribute students across faculty counsellors)
-        seedCounselling(allStudents, facultyUsers);
 
         log.info("Synthetic dataset verification/generation complete! 10 sections, {} students, 35 faculty members with full curriculum and conflict-free timetables.", allStudents.size());
     }

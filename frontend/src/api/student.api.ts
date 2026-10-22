@@ -1,12 +1,16 @@
 import { request } from './auth.api';
 import type {
   ApiResponse,
+  ReassignSectionRequest,
+  ReassignSectionResponse,
+  StudentCertificateDto,
   StudentCounsellingSummaryDto,
   StudentDetailDto,
   StudentDto,
   StudentFullProfileDto,
   TimetableEntryDto,
   UpdateStudentRequest,
+  UpsertCertificateRequest,
 } from '../types/auth.types';
 
 export const studentApi = {
@@ -56,6 +60,43 @@ export const studentApi = {
 
   async updateStudent(studentId: string, req: UpdateStudentRequest): Promise<StudentDetailDto> {
     const res = await request<ApiResponse<StudentDetailDto>>(`/api/v1/students/${studentId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+    return res.data;
+  },
+
+  async getStudentCertificates(studentId: string): Promise<StudentCertificateDto[]> {
+    const res = await request<ApiResponse<StudentCertificateDto[]>>(`/api/v1/students/${studentId}/certificates`, {
+      method: 'GET',
+    });
+    return res.data;
+  },
+
+  async addStudentCertificate(studentId: string, req: UpsertCertificateRequest): Promise<StudentCertificateDto> {
+    const res = await request<ApiResponse<StudentCertificateDto>>(`/api/v1/students/${studentId}/certificates`, {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+    return res.data;
+  },
+
+  async updateStudentCertificate(studentId: string, certificateId: string, req: UpsertCertificateRequest): Promise<StudentCertificateDto> {
+    const res = await request<ApiResponse<StudentCertificateDto>>(`/api/v1/students/${studentId}/certificates/${certificateId}`, {
+      method: 'PUT',
+      body: JSON.stringify(req),
+    });
+    return res.data;
+  },
+
+  async deleteStudentCertificate(studentId: string, certificateId: string): Promise<void> {
+    await request<ApiResponse<void>>(`/api/v1/students/${studentId}/certificates/${certificateId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async reassignLateralSection(studentId: string, req: ReassignSectionRequest): Promise<ReassignSectionResponse> {
+    const res = await request<ApiResponse<ReassignSectionResponse>>(`/api/v1/students/${studentId}/reassign-section`, {
       method: 'PUT',
       body: JSON.stringify(req),
     });

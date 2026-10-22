@@ -92,9 +92,8 @@ public class StudentScopeService {
             return true;
         }
 
-        // Student's active enrollment
-        Optional<StudentEnrollment> activeEnrollment = enrollmentRepository.findByStudentIdAndCurrentTrue(student.getId());
-        Section section = activeEnrollment.map(StudentEnrollment::getSection).orElse(null);
+        // Student's active or latest enrollment section
+        Section section = resolveStudentSection(student);
 
         if (role == Role.HOD || caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
@@ -149,8 +148,7 @@ public class StudentScopeService {
 
         if (role == Role.HOD || caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
-            Optional<StudentEnrollment> activeEnrollment = enrollmentRepository.findByStudentIdAndCurrentTrue(student.getId());
-            Section section = activeEnrollment.map(StudentEnrollment::getSection).orElse(null);
+            Section section = resolveStudentSection(student);
             if (section != null && section.getSemester() != null
                 && section.getSemester().getProgram() != null
                 && section.getSemester().getProgram().getDepartment() != null) {
@@ -186,8 +184,7 @@ public class StudentScopeService {
             return true;
         }
 
-        Optional<StudentEnrollment> activeEnrollment = enrollmentRepository.findByStudentIdAndCurrentTrue(student.getId());
-        Section section = activeEnrollment.map(StudentEnrollment::getSection).orElse(null);
+        Section section = resolveStudentSection(student);
 
         if (role == Role.HOD || caller.isHod()) {
             Department hodDept = hodService.resolveHodDepartment(caller);
@@ -368,6 +365,18 @@ public class StudentScopeService {
             .sorted(Comparator.comparing(e -> e.getStudent().getRegistrationNumber()))
             .map(e -> toStudentDto(e.getStudent(), e.getSection()))
             .toList();
+    }
+
+    private Section resolveStudentSection(Student student) {
+        if (student == null) {
+            return null;
+        }
+        return enrollmentRepository.findByStudentIdAndCurrentTrue(student.getId())
+            .map(StudentEnrollment::getSection)
+            .orElseGet(() -> {
+                List<StudentEnrollment> anyEnrollments = enrollmentRepository.findByStudentId(student.getId());
+                return anyEnrollments.isEmpty() ? null : anyEnrollments.get(0).getSection();
+            });
     }
 
     private StudentDto toStudentDto(Student student, Section section) {

@@ -15,8 +15,11 @@ public class FacultyProfile {
     private UUID id;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @JoinColumn(name = "user_id", nullable = true, unique = true)
     private User user;
+
+    @Column(name = "faculty_name", length = 150)
+    private String facultyName;
 
     @Column(name = "employee_number", nullable = false, unique = true, length = 50)
     private String employeeNumber;
@@ -40,6 +43,12 @@ public class FacultyProfile {
     @Column(name = "institutional_contact", length = 100)
     private String institutionalContact;
 
+    @Column(name = "source_url", length = 500)
+    private String sourceUrl;
+
+    @Column(name = "is_synthetic", nullable = false)
+    private boolean isSynthetic = false;
+
     @Column(name = "active_status", nullable = false)
     private boolean activeStatus = true;
 
@@ -62,6 +71,7 @@ public class FacultyProfile {
         String institutionalContact
     ) {
         this.user = user;
+        this.facultyName = user != null ? user.getFullName() : null;
         this.employeeNumber = employeeNumber;
         this.department = department;
         this.designation = designation;
@@ -70,12 +80,45 @@ public class FacultyProfile {
         this.professionalExperience = professionalExperience;
         this.institutionalContact = institutionalContact;
         this.activeStatus = true;
+        this.isSynthetic = false;
+    }
+
+    public FacultyProfile(
+        String facultyName,
+        String employeeNumber,
+        Department department,
+        String designation,
+        String qualification,
+        String specialization,
+        String sourceUrl
+    ) {
+        this.user = null;
+        this.facultyName = facultyName;
+        this.employeeNumber = employeeNumber;
+        this.department = department;
+        this.designation = designation;
+        this.qualification = qualification;
+        this.specialization = specialization;
+        this.sourceUrl = sourceUrl;
+        this.activeStatus = true;
+        this.isSynthetic = false;
     }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
     public User getUser() { return user; }
-    public void setUser(User user) { this.user = user; }
+    public void setUser(User user) {
+        this.user = user;
+        if (user != null && (this.facultyName == null || this.facultyName.isBlank())) {
+            this.facultyName = user.getFullName();
+        }
+    }
+    public String getFacultyName() {
+        return (facultyName != null && !facultyName.isBlank())
+            ? facultyName
+            : (user != null ? user.getFullName() : null);
+    }
+    public void setFacultyName(String facultyName) { this.facultyName = facultyName; }
     public String getEmployeeNumber() { return employeeNumber; }
     public void setEmployeeNumber(String employeeNumber) { this.employeeNumber = employeeNumber; }
     public Department getDepartment() { return department; }
@@ -90,8 +133,13 @@ public class FacultyProfile {
     public void setProfessionalExperience(String professionalExperience) { this.professionalExperience = professionalExperience; }
     public String getInstitutionalContact() { return institutionalContact; }
     public void setInstitutionalContact(String institutionalContact) { this.institutionalContact = institutionalContact; }
+    public String getSourceUrl() { return sourceUrl; }
+    public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
+    public boolean isSynthetic() { return isSynthetic; }
+    public void setSynthetic(boolean synthetic) { isSynthetic = synthetic; }
     public boolean isActiveStatus() { return activeStatus; }
     public void setActiveStatus(boolean activeStatus) { this.activeStatus = activeStatus; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }

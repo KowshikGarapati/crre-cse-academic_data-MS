@@ -209,6 +209,52 @@ export interface UpdateStudentRequest {
   apaarNumber?: number | null;
   sectionId?: string | null;
   status?: 'ACTIVE' | 'INACTIVE';
+  dateOfBirth?: string;
+  gender?: string;
+  entranceExamName?: string;
+  entranceHallTicket?: string;
+  entranceRank?: number;
+}
+
+export interface ReassignSectionRequest {
+  targetSectionId: string;
+  reason?: string;
+}
+
+export interface ReassignSectionResponse {
+  studentId: string;
+  registrationNumber: string;
+  previousSectionId?: string | null;
+  previousSectionName?: string | null;
+  newSectionId: string;
+  newSectionName: string;
+  reassignedAt: string;
+}
+
+export type CertificateStatus = 'SUBMITTED' | 'VERIFIED' | 'PENDING' | 'RETURNED';
+
+export interface StudentCertificateDto {
+  id: string;
+  studentId: string;
+  certificateType: string;
+  certificateNumber?: string | null;
+  issuingAuthority?: string | null;
+  issueYear?: number | null;
+  status: CertificateStatus;
+  remarks?: string | null;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UpsertCertificateRequest {
+  certificateType: string;
+  certificateNumber?: string | null;
+  issuingAuthority?: string | null;
+  issueYear?: number | null;
+  status: CertificateStatus;
+  remarks?: string | null;
 }
 
 // ==================== FACULTY DTOS ====================
@@ -303,14 +349,33 @@ export interface CreateCounsellingRecordRequest {
 
 export interface FacultyProfileDto {
   id: string;
+  userId?: string | null;
   employeeNumber: string;
-  departmentName: string;
+  fullName?: string;
+  facultyName?: string;
+  email?: string | null;
+  departmentId?: string;
+  departmentName?: string;
   designation: string;
   qualification?: string;
   specialization?: string;
   professionalExperience?: string;
   institutionalContact?: string;
-  activeStatus: string;
+  activeStatus: boolean | string;
+  activeRoles?: string[];
+  sourceUrl?: string | null;
+  isSynthetic?: boolean;
+}
+
+export interface UpdateFacultyProfileRequest {
+  facultyName?: string;
+  designation?: string;
+  qualification?: string;
+  specialization?: string;
+  professionalExperience?: string;
+  institutionalContact?: string;
+  activeStatus?: boolean | string;
+  sourceUrl?: string;
 }
 
 // ==================== STUDENT DTOS ====================
@@ -343,6 +408,11 @@ export interface StudentFullProfileDto {
   sectionName?: string;
   admissionCategory?: string | null;
   tuitionCategory?: string | null;
+  dateOfBirth?: string;
+  gender?: string;
+  entranceExamName?: string;
+  entranceHallTicket?: string;
+  entranceRank?: number;
   classTeacherName?: string;
   classTeacherEmail?: string;
   counsellorName?: string;
@@ -406,6 +476,11 @@ export interface StudentDetailDto {
   status: string;
   admissionCategory?: string | null;
   tuitionCategory?: string | null;
+  dateOfBirth?: string;
+  gender?: string;
+  entranceExamName?: string;
+  entranceHallTicket?: string;
+  entranceRank?: number;
   placement?: StudentPlacementDto;
   classTeacherName?: string;
   classTeacherEmail?: string;

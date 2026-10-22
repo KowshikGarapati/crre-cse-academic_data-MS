@@ -3,6 +3,7 @@ package com.crre.academicdms.features.student.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
 import java.util.UUID;
 
 public record UpdateStudentRequest(
@@ -19,5 +20,24 @@ public record UpdateStudentRequest(
     Long aadharNumber,
     Long apaarNumber,
     UUID sectionId,
-    String status // "ACTIVE", "INACTIVE"
-) {}
+    String status, // "ACTIVE", "INACTIVE"
+    LocalDate dateOfBirth,
+    String gender,
+    String entranceExamName,
+    String entranceHallTicket,
+    Integer entranceRank
+) {
+    public UpdateStudentRequest(
+        String fullName,
+        String email,
+        String entryType,
+        String admissionCategory,
+        String tuitionCategory,
+        Long aadharNumber,
+        Long apaarNumber,
+        UUID sectionId,
+        String status
+    ) {
+        this(fullName, email, entryType, admissionCategory, tuitionCategory, aadharNumber, apaarNumber, sectionId, status, null, null, null, null, null);
+    }
+}
